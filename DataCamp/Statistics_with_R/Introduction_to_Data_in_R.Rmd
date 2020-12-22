@@ -254,8 +254,102 @@ ucb_admission_counts  %>%
 ```
 
 
-
 ## Sampling strategies and experimental design
+
+### Sampling strategies
+Why sample? Why not take a census of the entire population of interest?
+
+* Conducting a census is very resource intensive
+* Nearly imposible to collect data from all individuals, hence there is no guarentee of unbiased results
+* Populations constantly change
+
+**Simple Random Samples**: select cases randomly from the population such that each case is equally likely to be selected.  
+**Stratefied Samples**: first, divide the population into homogenious groups, or stata. Then, randomly sample within strata.  
+**Cluster Samples**: divide the population into clusters, only samplea few clusters, but sample these clusters in entirety.  
+**Multistage Samples**: add another step after cluster sampling: randomly sample observations from within randomly sampled clusters.
+
+### Sampling in R
+
+```{r}
+#load the county dataframe
+data( county )
+glimpse( county )
+```
+```{r}
+set.seed( 1349 )
+#remove DC (because it is not a state ?)
+county_noDC <- county %>%
+  filter( state != 'District of Columbia') %>%
+  droplevels()
+
+#simple random sample
+county_srs <- county_noDC %>%
+  sample_n( size = 150 )
+
+( length( unique( county_srs$state ) ) ) #depending on seed, might not sample all 50 states
+#and would very very very unlikely sample them evenly
+
+county_srs %>%
+  group_by( state ) %>%
+  count() %>%
+  ggplot( aes( x = state, y = n ) ) +
+  geom_bar( stat = 'identity' ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle( 'Simple Sample Distribution' )
+```
+```{r}
+#stratefied sample
+county_str <- county_noDC %>%
+  group_by( state ) %>%
+  sample_n( size = 3 ) %>%
+  count() %>%
+  ggplot( aes( x = state, y = n ) ) +
+  geom_bar( stat = 'identity' ) +
+  ylim( 0,5 ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle( 'Stratefied Sample Distribution' )
+county_str
+```
+
+
+```{r}
+load( file="us_regions.RData" )
+glimpse( us_regions )
+```
+
+```{r}
+# Simple random sample: states_srs
+states_srs <- us_regions %>%
+  sample_n( 8 )
+
+# Count states by region
+states_srs %>%
+  count(region)
+```
+
+```{r}
+# Stratified sample
+states_str <- us_regions %>%
+  group_by(region) %>%
+  sample_n(2)
+
+# Count states by region
+states_str %>%
+  count()
+```
+
+### Principles of Experimental Design
+
+* **Control**: compare treatment of interest to a control group
+* **Randomize**: randomly assign subjects to treatment
+* **Replicate**: collect a sufficiently large sample within a study, or replicate the entire study
+* **Block**: account for the potential effect of confounding variables
+  + Group subjects unto blocks based on variables
+  + Randomize within each block to treatment groups
+
+
+
+
 
 
 ## Case study
