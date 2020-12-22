@@ -1,0 +1,193 @@
+---
+title: 'Introduction to Data in R'
+subtitle: 'DataCamp: Statistics with R'
+author: 'Bonnie Cooper'
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Notes from videos and exercises. This is a casual follow along to help me remember all the things and to serve as future reference.
+
+## Language of Data
+
+```{r, message= FALSE}
+library( openintro )
+library( dplyr )
+library( ggplot2 )
+```
+
+```{r}
+data( hsb2 )
+head( hsb2 )
+```
+```{r}
+str( hsb2 )
+```
+```{r}
+glimpse( hsb2 )
+```
+
+```{r}
+data( email50 )
+str( email50 )
+```
+
+### Types of variables
+Variable type helps us to determine:
+
+1. What type of summary statistics are needed to describe the data
+2. What type of visualizations best represent the data
+3. What statistical methods can be applied to the data  
+
+**Numeric (qualitative)**:   
+
+  + **Continuous**: inifite number of values within a given range
+  + **Discrete**: specific set of numeric values that can be counted or enumerated, often counted  
+  
+**Categorical (qualitative)**:  
+
+  + **Ordinal**: finite number of values within a given range, often measured
+
+
+### Categorical Data
+
+* Is often stored as factors in R
+  + factors have an important use in statistical modeling
+  + Sometimes factors are undesirable, but sometimes essetial
+* Common in subgroup analysis
+  + Only interested in a subset of the data
+  + Filter for specific levels of categorical variable
+
+```{r}
+#frquency tables
+table( hsb2$schtyp )
+#use dplyr filter to subset the 'public' data
+hsb2_public <- hsb2 %>% filter( schtyp == 'public' )
+head( hsb2_public )
+```
+
+The pipe operator `%>%`:  
+
+  * take the dataframe before the operator and pass to the function following
+  * ex: `x %>% f( y )` is effectively `f( x,y )`
+  * ex: `sum( 3,4 )` is effectively `3 %>% sum( 4 )`
+
+```{r}
+table( hsb2_public$schtyp )
+```
+The output still shows 'private' as an option even though it does not exist in this subset of the data.
+```{r}
+#drop unused levels
+hsb2_public$schtyp <- droplevels( hsb2_public$schtyp )
+table( hsb2_public$schtyp )
+```
+
+```{r}
+# Subset of emails with big numbers: email50_big
+email50_big <- email50 %>%
+  filter( number == 'big' )
+
+# Glimpse the subset
+#glimpse( email50_big )
+table( email50_big$number )
+email50_big$number = droplevels( email50_big$number )
+table( email50_big$number )
+```
+
+### Descretize a variable
+redefining a numeric variable as a categorical variable
+
+```{r}
+#descretize the average reading score feature as either above or below average
+(avg_read <- mean( hsb2$read )) #the extra parentheses will tell R to print the result
+```
+
+use dplyr mutate to create a new discrete variable that categorizes a record as being either above or below average reading scores
+```{r}
+#create new variable: read_cat
+hsb2 <- hsb2 %>%
+  mutate( read_cat = ifelse(
+    read < avg_read,       # <-- logical condition
+    'below average',       # <--what to do if condition is TRUE
+    'at or above average'  # <--what to do if condition is FALSE
+  ))
+head( hsb2 )
+```
+
+```{r}
+# Calculate median number of characters: med_num_char
+med_num_char <- median( email50$num_char )
+
+# Create num_char_cat variable in email50
+email50_fortified <- email50 %>%
+  mutate(num_char_cat = ifelse(num_char < med_num_char, 'below median', "at or above median" ))
+  
+# Count emails in each category
+email50_fortified %>%
+  count(num_char_cat)
+```
+
+```{r}
+# Create number_yn column in email50
+email50_fortified <- email50 %>%
+  mutate(
+    number_yn = case_when(
+      # if number is "none", make number_yn "no"
+      number == "none" ~ "no", 
+      # if number is not "none", make number_yn "yes"
+      number != "none" ~ "yes"  
+    )
+  )
+  
+
+# Visualize the distribution of number_yn
+ggplot(email50_fortified, aes(x = number_yn)) +
+  geom_bar()
+```
+
+### Visualizing numerical data 
+
+**`ggplot2`**  
+
+* Modern looking hasstle-free plots (don't have to explicitly render legends etc.)
+* easy to extend code to multivariate plots
+* Iterative construction (can build complex visualizations by adding relatively simple layers)
+
+```{r}
+#scatterplot of math vs science scores
+ggplot( data = hsb2, aes( x = science, y = math, color = prog ) ) + 
+  #layers are separated by '+'
+  geom_point() #having the next layer on a new line makes code readable
+```
+
+```{r}
+# Scatterplot of exclaim_mess vs. num_char
+ggplot(email50, aes(x = num_char, y = exclaim_mess, color = factor(spam))) +
+  geom_point()
+```
+
+
+
+
+```{r}
+load( file="evals.RData" )
+head(evals)
+``` 
+
+
+## Study types and cautionary tales
+
+
+## Sampling strategies and experimental design
+
+
+## Case study
+
+
+<br><br><br>
