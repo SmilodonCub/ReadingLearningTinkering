@@ -20,6 +20,7 @@ Notes from videos and exercises. This is a casual follow along to help me rememb
 library( openintro )
 library( dplyr )
 library( ggplot2 )
+library( gapminder )
 ```
 
 ```{r}
@@ -174,20 +175,95 @@ ggplot(email50, aes(x = num_char, y = exclaim_mess, color = factor(spam))) +
 
 
 
+## Study types and cautionary tales
+
+### Observational studies and experiments
+
+Types of studies:
+
+* **Observational Study**:
+  + Collect data in a way that does not directly interfere with how the data arise
+  + Only correlations can be inferred
+* **Experiments**:
+  + Randomly assign subjects to various treatments
+  + Causation can be inferred
+
+In an experiment, variables that migth also contribute to the outcome (confounding variables) are most likely represented equally in the study groups due to random assignment. Therefore, if there is a significant difference found between the averages of the dependent variable, then we can make causal statements.
+
+An example of an observational study:
+```{r}
+data( gapminder )
+glimpse( gapminder )
+```
+
+### Random sampling and random assignment
+
+Random....
+
+* **Random Sampling**: 
+  + At selection of subjects from population
+  + Helps generalizability of results
+* **Random Assignment**:
+  + At selection of subjects from population
+  + helps infer causation from results
+  
+Scope of Inference
+
+|                    |       Random Assignment      |     No Random Assignment     |                   |
+|:------------------:|:----------------------------:|:----------------------------:|:-----------------:|
+|   Random Sampling  |    Causal & Generalizable    | Not Causal but Generalizable |   Generalizable   |
+| No Random Sampling | Causal but not Generalizable |  Not Causal or Generalizable | Not Generalizable |
+|                    |            Causal            |          Not Causal          |                   |
+
+Simpson's paradox: not considering an important variable when studying an effect
 
 ```{r}
-load( file="evals.RData" )
-head(evals)
-``` 
+load( file="ucb_admit.RData" )
+head( ucb_admit )
+```
+```{r}
+# Count number of male and female applicants admitted
+ucb_admission_counts <- ucb_admit %>%
+  count(Gender, Admit)
+```
 
+```{r}
+#calculate the proportion of males admitted overall
+ucb_admission_counts %>%
+  # Group by gender
+  group_by(Gender) %>%
+  # Create new variable
+  mutate(prop = n / sum( n )) %>%
+  # Filter for admitted
+  filter(Admit == "Admitted")
+```
 
-## Study types and cautionary tales
+```{r}
+#now to find the proportions of males and females admitted by department
+ucb_admission_counts <- ucb_admit %>%
+  # Counts by department, then gender, then admission status
+  count(Dept, Gender, Admit)
+
+ucb_admission_counts  %>%
+  # Group by department, then gender
+  group_by(Dept, Gender) %>%
+  # Create new variable
+  mutate(prop = n/sum(n)) %>%
+  # Filter for male and admitted
+  filter(Gender == 'Male', Admit == "Admitted")
+```
+
 
 
 ## Sampling strategies and experimental design
 
 
 ## Case study
+
+```{r}
+load( file="evals.RData" )
+head(evals)
+``` 
 
 
 <br><br><br>
