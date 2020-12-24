@@ -1,0 +1,145 @@
+---
+title: 'Exploratory Data Analysis in R'
+subtitle: 'DataCamp: Statistics with R'
+author: 'Bonnie Cooper'
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library( dplyr )
+library( ggplot2 )
+```
+
+
+
+## Exploring Categorical Data
+
+Comics Dataset
+```{r}
+comicsurl <- 'https://assets.datacamp.com/production/repositories/537/datasets/8860af2c0ef67fc77a8c704a73bbb93a395debcf/comics.csv'
+comics <- read.csv( comicsurl )
+glimpse( comics )
+```
+
+
+```{r}
+#contingency table
+table( comics$id, comics$align )
+```
+
+Visualizing.  
+ggplot( data, aes( x=var1, fill=var2 ) ) + layer_name()  
+
+1. the data (inferred if piped)
+2. the variables to be plotted
+3. layers built up in succession
+
+```{r}
+ggplot( comics, aes( x=id, fill=align ) ) + geom_bar()
+```
+```{r}
+# Create side-by-side barchart of alignment by alignment
+ggplot(comics, aes(x = align, fill = gender)) + 
+  geom_bar(position= 'dodge' ) +
+  theme(axis.text.x = element_text(angle = 30))
+# Create side-by-side barchart of alignment by gender
+ggplot(comics, aes(x = gender, fill = align)) + 
+  geom_bar(position= 'dodge' ) +
+  theme(axis.text.x = element_text(angle = 30))
+```
+
+### Counts vs. Proportions
+```{r}
+options( scipen = 999, digits = 3 )
+#Allow the user to set and examine a variety of global options which affect the way in which R computes and displays its results.
+
+tab_cnt <- table( comics$id, comics$align )
+tab_prob <- prop.table( tab_cnt )
+( tab_prob )
+sum( tab_prob )
+```
+
+Conditional Proportions
+```{r}
+prop.table( tab_cnt, 1 ) #Condition on the rows (every row adds to 1)
+margin.table( tab_cnt, 1 ) #sum on the rows
+margin.table( tab_cnt, 2) #sum on the columns
+prop.table( tab_cnt, 2 ) #Condition on the columns (every column adds to 1)
+```
+```{r}
+#Conditional Bar Chart
+#condition on id
+ggplot( comics, aes( x=id, fill=align ) ) +
+  geom_bar( position = 'fill' ) +
+  ylab( 'proportion' )
+#condition on alignment
+ggplot( comics, aes( x=align, fill=id ) ) +
+  geom_bar( position = 'fill' ) +
+  ylab( 'proportion' )
+```
+
+```{r}
+tab <- table(comics$align, comics$gender)
+options(scipen = 999, digits = 2) # Print fewer digits
+prop.table(tab)     # Joint proportions
+prop.table(tab, 2)  # Conditional on columns
+```
+
+### Distribution of one variable
+Marginal Distribution  
+```{r}
+table( comics$id )
+```
+
+**Faceting**: breaks the dataset down to levels among variables
+```{r}
+ggplot( comics, aes( x=id ) ) +
+  geom_bar() +
+  facet_wrap( ~align ) +
+  theme(axis.text.x = element_text(angle = 45))
+```
+it's like an expansion of a stacked bar chart
+
+```{r}
+# Change the order of the levels in align
+comics <- comics %>% filter( align %in% c('Bad', 'Neutral', 'Good') )
+comics$align <- factor(comics$align, 
+                       levels = c('Bad', 'Neutral', 'Good') )
+
+# Create plot of align
+ggplot(comics, aes(x = align)) + 
+  geom_bar()
+```
+
+```{r}
+# Change the order of the levels in align
+comics <- comics %>% filter( gender %in% c('Female', 'Male') )
+comics$gender <- factor(comics$gender, 
+                       levels = c('Female', 'Male') )
+
+# Create plot of align
+ggplot(comics, aes(x = align)) + 
+  geom_bar() +
+  facet_wrap( ~gender )
+```
+
+
+
+## Exploring Numerical Data
+
+
+## Numerical Summaries
+
+
+## Case Study
+
+
+<br><br><br>
