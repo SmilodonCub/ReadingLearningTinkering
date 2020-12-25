@@ -16,6 +16,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r, message=FALSE}
 library( dplyr )
 library( ggplot2 )
+library( gapminder )
+library( openintro )
 ```
 
 
@@ -135,11 +137,397 @@ ggplot(comics, aes(x = align)) +
 
 ## Exploring Numerical Data
 
+```{r}
+carsurl <- 'https://assets.datacamp.com/production/repositories/537/datasets/c0366d5da5ee8dce49919a5443685cf2e50c6a96/cars04.csv'
+cars_df <- read.csv( carsurl )
+str( cars_df )
+```
+
+Dotplots
+```{r}
+ggplot( cars_df, aes( x = weight ) ) +
+  geom_dotplot( dotsize = 0.3 )
+```
+
+Histogram
+```{r}
+ggplot( cars_df, aes( x = weight ) ) +
+  geom_histogram( )
+```
+
+Density plot
+```{r}
+ggplot( cars_df, aes( x=weight ) ) +
+  geom_density()
+```
+
+Boxplot
+```{r}
+ggplot( cars_df, aes( x = 1, y = weight ) ) +
+  geom_boxplot() +
+  coord_flip()
+```
+
+Faceted Histogram
+```{r}
+ggplot( cars_df, aes( x = hwy_mpg ) ) +
+  geom_histogram() +
+  facet_wrap( ~pickup )
+```
+
+```{r}
+# Filter cars with 4, 6, 8 cylinders
+common_cyl <- filter(cars_df, ncyl %in% c( 4, 6, 8 ))
+
+# Create box plots of city mpg by ncyl
+ggplot(common_cyl, aes(x = as.factor(ncyl), y = city_mpg)) +
+  geom_boxplot()
+
+# Create overlaid density plots for same data
+ggplot(common_cyl, aes(x = city_mpg, fill = as.factor( ncyl ))) +
+  geom_density(alpha = .3)
+```
+
+### Distribution of one variable
+building a data pipeline
+```{r}
+cars_df %>% 
+  filter( eng_size < 2.0 ) %>%
+  ggplot( aes( hwy_mpg ) ) +
+  geom_histogram( binwidth = 5 )
+```
+
+```{r}
+cars_df %>% 
+  filter( eng_size < 2.0 ) %>%
+  ggplot( aes( hwy_mpg ) ) +
+  geom_density( bw = 5 )
+```
+
+```{r}
+# Create hist of horsepwr
+cars_df %>%
+  ggplot(aes(horsepwr)) +
+  geom_histogram() +
+  ggtitle('hist of horsepwr')
+
+# Create hist of horsepwr for affordable cars
+cars_df %>% 
+  filter(msrp < 25000) %>%
+  ggplot(aes(horsepwr)) +
+  geom_histogram() +
+  xlim(c(90, 550)) +
+  ggtitle('hist of horsepwr for affordable cars')
+```
+
+```{r}
+# Create hist of horsepwr with binwidth of 3
+cars_df %>%
+  ggplot(aes(horsepwr)) +
+  geom_histogram(binwidth = 3) +
+  ggtitle('horsepwr with binwidth of 3')
+
+# Create hist of horsepwr with binwidth of 30
+cars_df %>%
+  ggplot(aes(horsepwr)) +
+  geom_histogram(binwidth = 30) +
+  ggtitle('horsepwr with binwidth of 30')
+
+# Create hist of horsepwr with binwidth of 60
+cars_df %>%
+  ggplot(aes(horsepwr)) +
+  geom_histogram(binwidth = 60) +
+  ggtitle('horsepwr with binwidth of 60')
+
+```
+
+### Box Plots
+```{r}
+ggplot( common_cyl, aes( as.factor( ncyl ), y = city_mpg ) ) +
+  geom_boxplot()
+```
+
+```{r}
+# Construct box plot of msrp
+cars_df %>%
+  ggplot(aes(x = 1, y = msrp)) +
+  geom_boxplot()
+
+# Exclude outliers from data
+cars_no_out <- cars_df %>%
+  filter(msrp < 100000)
+
+# Construct box plot of msrp using the reduced dataset
+cars_no_out %>%
+  ggplot(aes(x = 1, y = msrp)) +
+  geom_boxplot()
+```
+
+## Visualization in higher dimensions
+Facet Grid
+```{r}
+ggplot( cars_df, aes( x = msrp ) ) +
+  geom_density() +
+  facet_grid( pickup ~ rear_wheel, labeller = label_both )
+table( cars_df$rear_wheel, cars_df$pickup )
+```
+```{r}
+# Facet hists using hwy mileage and ncyl
+common_cyl %>%
+  ggplot(aes(x = hwy_mpg)) +
+  geom_histogram() +
+  facet_grid(ncyl ~ suv, labeller = label_both ) +
+  ggtitle('Some title')
+```
+
+### Measures of Center
+```{r}
+life_url <- 'https://assets.datacamp.com/production/repositories/537/datasets/e079a96a639aa10afc478359da45f2f75f7efd2e/life_exp_raw.csv'
+life <- read.csv( life_url )
+glimpse( life )
+colnames( life )
+```
+
+
 
 ## Numerical Summaries
 
+Median: robust.
+Mean: sensitive to extreme values
+
+```{r}
+life <- life %>%
+  mutate( west_coast = State %in% c( 'California', 'Oregon', 'Washington' ) ) %>%
+  group_by( west_coast )  %>%
+  summarise( mean( Female.life.expectancy..years.), 
+             mean( Male.life.expectancy..years.),
+             median( Female.life.expectancy..years. ), 
+             median( Male.life.expectancy..years.))
+life
+```
+
+```{r}
+data( gapminder )
+glimpse( gapminder )
+```
+
+```{r}
+# Create dataset of 2007 data
+gap2007 <- filter(gapminder, year == 2007)
+
+# Compute groupwise mean and median lifeExp
+gap2007 %>%
+  group_by(continent) %>%
+  summarize(mean( lifeExp ),
+            median( lifeExp ) )
+
+# Generate box plots of lifeExp for each continent
+gap2007 %>%
+  ggplot(aes(x = continent, y = lifeExp)) +
+  geom_boxplot()
+```
+
+### Visualization in higher dimensions
+```{r}
+ggplot( cars_df, aes( x=msrp ) ) +
+  geom_density() +
+  facet_grid( pickup ~ rear_wheel ) #facel_grid( rows ~ columns )
+```
+
+### Measures of Variability
+**Variance**: take the sum of the squares of the distances of each measure in the group from the group mean. Then, divide the sum by the number of measurements - 1.
+**Standard deviation**: square rrot of the variance.  
+
+Standard deviation is pretty common to use, because it is a measure in the same unitsas the data.
+
+```{r}
+#Standard deviation
+sd( gapminder$lifeExp )
+
+#Variance
+var( gapminder$lifeExp )
+
+#summary stats
+summary( gapminder$lifeExp )
+
+#inter quartile range
+IQR( gapminder$lifeExp )
+```
+
+IQR is a more robust measure of data spread than range; less impacted by outliers.
+
+```{r}
+# Compute groupwise measures of spread
+gap2007 %>%
+  group_by(continent) %>%
+  summarize(sd(lifeExp),
+            IQR(lifeExp),
+            n())
+
+# Generate overlaid density plots
+gap2007 %>%
+  ggplot(aes(x = lifeExp, fill = continent)) +
+  geom_density(alpha = 0.3)
+```
+
+```{r}
+#based on the graphs, select the most appropriate measures of the data center & spread.
+
+gap2007 %>%
+  filter(continent == 'Americas') %>%
+  ggplot( aes( lifeExp ) ) +
+  geom_density()
+# Compute stats for lifeExp in Americas
+gap2007 %>%
+  filter(continent == 'Americas') %>%
+  summarize(mean( lifeExp ),
+            sd( lifeExp ))
+
+ggplot( gap2007, aes( pop ) ) +
+  geom_density()
+# Compute stats for population
+gap2007 %>%
+  summarize(median( pop ),
+            IQR( pop ))
+```
+
+```{r}
+# Create density plot of old variable
+gap2007 %>%
+  ggplot(aes(x = pop)) +
+  geom_density()
+
+# Transform the skewed pop variable
+gap2007 <- gap2007 %>%
+  mutate(log_pop = log( pop ))
+
+# Create density plot of new variable
+gap2007 %>%
+  ggplot(aes(x = log_pop)) +
+  geom_density()
+```
+
+### Outliers
+
+```{r}
+# Filter for Asia, add column indicating outliers
+gap_asia <- gap2007 %>%
+  filter(continent == 'Asia' ) %>%
+  mutate(is_outlier = lifeExp < 50 )
+
+# Remove outliers, create box plot of lifeExp
+gap_asia %>%
+  filter(!is_outlier) %>%
+  ggplot(aes(x = 1, y = lifeExp)) +
+  geom_boxplot()
+```
+
 
 ## Case Study
+
+Email Data: What characteristics of an email are associated with it being spam?
+```{r}
+glimpse( email )
+```
+
+```{r}
+# Compute summary statistics
+email %>%
+  group_by( spam ) %>%
+  summarize( median( num_char ), IQR( num_char ) )
+
+# Create plot
+email %>%
+  mutate(log_num_char = log( num_char ) ) %>%
+  ggplot(aes(group = spam, y = log_num_char)) +
+  geom_boxplot()
+```
+
+The median length of not-spam emails is greater than that of spam emails
+
+```{r}
+# Compute center and spread for exclaim_mess by spam
+email %>%
+  group_by( spam ) %>%
+  summarize( median( exclaim_mess ), IQR( exclaim_mess ) )
+
+# Create plot for spam and exclaim_mess
+email %>%
+  mutate(log_exclaim_mess = log( exclaim_mess + 0.01) ) %>%
+  ggplot(aes(x = log_exclaim_mess, group = spam)) +
+  geom_density( alpha = 0.3 ) +
+  xlim( -10, 10 )
+```
+
+The most common values of exclaim_mess in both classes of email is zero (a log(exclaim_mess) of -4.6 after adding .01).  
+Even after a transformation, the distribution of exclaim_mess in both classes of email is right-skewed.  
+The typical number of exclamations in the not-spam group appears to be slightly higher than in the spam group
+
+```{r}
+email %>%
+  mutate( zero = exclaim_mess == 0 ) %>%
+  ggplot( aes( x = zero, color = as.factor( spam ), fill = as.factor( spam ) ) ) +
+  geom_bar() +
+  facet_wrap( ~spam )
+
+
+email %>% mutate( zero = exclaim_mess == 0 ) %>%
+  ggplot( aes( x = zero, fill = as.factor( spam ) ) ) +
+  geom_bar( position = 'fill' )
+```
+
+
+```{r}
+table( email$image )
+
+email %>%
+  mutate(has_image = image > 0 ) %>%
+  ggplot( aes( x = has_image, color = as.factor( spam ), fill = as.factor( spam ) ) ) +
+  geom_bar() +
+  facet_wrap( ~spam )
+
+email %>%
+  mutate(has_image = image > 0 ) %>%
+  ggplot(aes(x = has_image, color = as.factor( spam ), fill = as.factor( spam ) )) +
+  geom_bar(position = 'fill')
+```
+
+```{r}
+# Question 1: For emails containing the word "dollar", does the typical spam email contain a greater number of occurrences of the word than the typical non-spam email? Create a summary statistic that answers this question.
+email %>%
+  filter( dollar > 0 ) %>%
+  group_by(spam) %>%
+  summarize(median( dollar ))
+
+# Question 2: If you encounter an email with greater than 10 occurrences of the word "dollar", is it more likely to be spam or not-spam? Create a barchart that answers this question.
+email %>%
+  filter( dollar > 10 ) %>%
+  ggplot(aes(x = spam)) +
+  geom_bar()
+```
+
+Custom Ordering bars
+```{r}
+email <- email %>%
+  mutate( zero = exclaim_mess ==0 )
+#to set the order of zero, we need to convert to factors and specify the order
+email$zero <- factor( email$zero, levels = c( 'TRUE', 'FALSE' ) )
+email %>%
+  ggplot( aes( x = zero ) ) +
+  geom_bar() +
+  facet_wrap( ~spam )
+```
+
+```{r}
+# Reorder levels
+email$number_reordered <- factor( email$number, levels = c( 'none', 'small', 'big' ) )
+
+# Construct plot of number_reordered
+ggplot(email, aes( x = number_reordered ) ) +
+  geom_bar() +
+  facet_wrap( ~spam )
+```
+
 
 
 <br><br><br>
