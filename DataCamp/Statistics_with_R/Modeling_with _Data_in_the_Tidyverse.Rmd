@@ -1,0 +1,350 @@
+---
+title: 'Modeling with Data in the Tidyverse'
+subtitle: 'DataCamp: Statistics with R'
+author: 'Bonnie Cooper'
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( moderndive )
+library( stringr )
+library( gridExtra )
+```
+
+## Background on Modeling for Exploration
+
+General modeling framework formula:
+$$y = f( \vec{x}) + \epsilon$$
+
+* $y$: outcome variable of interest
+* $\vec{x}$: explanatory/predictor variable(s)
+* $f()$: function making the relationship between $y$ and $\vec{x}$ explicit. AKA: the signal
+* $\epsilon$: unsystematic error component. AKA the noise
+
+Motives for modeling  
+
+* **Explanation**: $\vec{x}$ are explanatory variables within data range
+* **Prediction**: $\vec{x}$ are prediction variables beyond data range
+
+```{r}
+glimpse( evals )
+```
+
+Exploratory Data Analysis  
+
+1. Looking at the data (e.g. w/ str() or glimpse())
+2. Creating Visualizations
+3. Computing Summary Statistics
+
+```{r}
+#visualize the numeric feature score
+ggplot( evals, aes( x = score ) ) +
+  geom_histogram( binwidth = 0.25 ) +
+  labs( x = 'teaching score', y = 'count' )
+```
+
+```{r}
+evals %>%
+  summarise( mean_score = mean( score ),
+             median_score = median( score ),
+             sd_score = sd( score ) )
+```
+
+```{r}
+# Compute summary stats
+evals %>%
+  summarise(mean_age = mean(age),
+            median_age = median(age),
+            sd_age = sd(age))
+
+# Plot the histogram
+ggplot(evals, aes(x = age)) +
+  geom_histogram(binwidth = 5) +
+  labs(x = "age", y= "count")
+```
+
+```{r}
+# Compute summary stats
+evals %>%
+  summarise(mean_cls_students = mean(cls_students),
+            median_cls_students = median(cls_students),
+            sd_cls_students = sd(cls_students))
+
+# Plot the histogram
+ggplot(evals, aes(x = cls_students)) +
+  geom_histogram(binwidth = 10) +
+  labs(x = "cls_students", y= "count")
+```
+
+```{r}
+evals %>%
+  summarise(mean_bty_avg = mean(bty_avg),
+            median_bty_avg = median(bty_avg),
+            sd_bty_avg = sd(bty_avg),
+            min_bty_avg = min( bty_avg),
+            max_bty_avg = max( bty_avg ))
+
+# Plot the histogram
+ggplot(evals, aes(x = bty_avg)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "bty_avg", y= "count")
+```
+
+### Background on Modeling for Prediction
+
+**Question**: Can we predict the sale price of houses based on their features?  
+Variables:  
+
+* $y$: House sale `price` in USD
+* $\vec{x}$: Features like `sqft_living`, `condition`, `bedrooms`, `yr_built`, `waterfront`
+
+```{r}
+kc_data_url <- 'https://raw.githubusercontent.com/SmilodonCub/ReadingLearningTinkering/master/DataCamp/Statistics_with_R/kc_house_data.csv'
+house_price_kg <- read.csv( kc_data_url )
+glimpse( house_price_kg )
+```
+
+```{r}
+glimpse( house_prices )
+```
+
+```{r}
+all_equal( house_prices, house_price_kg )
+```
+
+DataCamp made some small changes to the kaggle dataset. Here I try to wrangle to kaggle set into the same condition that the course prepared it using `dplyr` methods.
+
+```{r}
+house_price_kg2 <- house_price_kg %>%
+  mutate( id = as.character( id ),
+          date = as.Date( date, format = "%Y%m%d" ),
+          waterfront = as.logical( waterfront ),
+          condition = factor( condition ),
+          grade = factor( grade ),
+          zipcode = factor( zipcode )) %>%
+  mutate( id = if_else(nchar(id)<10, stringr::str_pad(id,width=10,side="left",pad="0"), id) )
+rownames( house_price_kg2 ) <- c()
+```
+
+```{r}
+#all_equal( house_prices, house_price_kg2 )
+all.equal( house_price_kg2, house_prices )
+```
+Good enough for the government. Now back to following the demo... 
+
+Visualization:
+```{r}
+ggplot( house_prices, aes( x = price ) ) +
+  geom_histogram() +
+  labs( x = 'house price', y = 'count' )
+```
+
+The distribution has is right skewed (with a long tail leading to the right of the distribution). This structure will make it difficult to compare lower valued housing prices. This finding is similar to the gapminder dataset:
+
+```{r}
+gapminder %>%
+  filter( year == 1952 ) %>%
+  ggplot( aes( x=pop, y=lifeExp, color=continent ) ) +
+  geom_point() +
+  ggtitle( '1952 country-level life expectancy vs population' )
+```
+
+Rescale the data on a log10 scale to beter distinguish data points in the lower price range
+```{r}
+gapminder %>%
+  filter( year == 1952 ) %>%
+  ggplot( aes( x=log10( pop ), y=lifeExp, color=continent ) ) +
+  geom_point() +
+  ggtitle( 'Log10 rescaling: 1952 country-level life expectancy vs population' )
+```
+
+With the rescaling, horizontal distances on the X-axis now correspond to multiplicate differences instead of additive.  
+
+Now to try something similar with the `house_prices` dataset
+```{r}
+house_price_scaled <- house_prices %>%
+  mutate( log10_price = log10( price ) ) %>%
+  select( price, log10_price )
+```
+
+**Monotonic transform**: the order is preserved.
+
+```{r}
+native_scale <- ggplot( house_prices, aes( x = price ) ) +
+  geom_histogram() +
+  labs( x = 'house price', y = 'count' ) +
+  ggtitle( 'Price' )
+
+log10_scale <- ggplot( house_price_scaled, aes( x = log10_price ) ) +
+  geom_histogram() +
+  labs( x = 'log10 house price', y = 'count' ) +
+  ggtitle( 'log10( Price )' )
+
+grid.arrange( native_scale, log10_scale, ncol = 2 )
+```
+
+After transformation, the `price` distribution is much less skewed. Pretty much normal.
+
+Now to see if the predictor feature, `sqft_living` warrants a similar transformation
+```{r}
+# Plot the histogram
+ggplot(house_prices, aes(x = sqft_living)) +
+  geom_histogram() +
+  labs(x = 'Size (sq.feet)', y='count')
+```
+
+The distribution is right skewed.
+```{r}
+# Add log10_size
+house_prices_2 <- house_prices %>%
+  mutate(log10_size = log10(sqft_living))
+
+native_scale <- ggplot( house_prices, aes( x = sqft_living ) ) +
+  geom_histogram() +
+  labs( x = 'size', y = 'count' ) +
+  ggtitle( 'Size' )
+
+log10_scale <- ggplot( house_prices_2, aes( x = log10_size ) ) +
+  geom_histogram() +
+  labs( x = 'log10 size', y = 'count' ) +
+  ggtitle( 'log10( Sie )' )
+
+grid.arrange( native_scale, log10_scale, ncol = 2 )
+```
+
+### Modeling the Problem for Explanation
+
+1. Generally, $f()$ and $\epsilon$ are unknown
+2. Unknown: $n$: the number of observations, $y$ and $\vec{x}$ are given in the dataset
+3. **Goal**: fit a model, $\hat{f}()$ that approximates $f()$ while ignoring $\epsilon$
+4. **Goal Restated**: separate the signal from the noise
+5. with the model, can then generate fitted/predicted values $\hat{y}=\hat{f}(\vec{x})$
+
+Modelling: exploring relationships between variables.
+EDA of relationship between 2 variables: `age` & `score`
+```{r}
+pnt_plot <- ggplot( evals, aes( x = age, y = score ) ) +
+  geom_point() +
+  labs( x = 'age', y = 'score', title = 'Teaching score over age' )
+
+jitter_plot <- ggplot( evals, aes( x = age, y = score ) ) +
+  geom_jitter() +
+  labs( x = 'age', y = 'score', title = 'Teaching score over age' )
+
+grid.arrange( pnt_plot, jitter_plot, ncol = 2 )
+```
+
+Is the relationship positive? investigate with the **correlation coefficient**
+```{r}
+evals %>%
+  summarize( correlation = cor( score, age ) )
+```
+
+The negative correlation suggests that as professor age, they tend to get lower scores.
+
+EDA of relationship of teaching & 'beauty' scores
+```{r}
+# Plot the histogram
+score_plot <- ggplot(evals, aes(x=score)) +
+  geom_histogram( ) +
+  labs(x = "Score", y = "count",
+       title = 'Score')
+
+beauty_plot <- ggplot(evals, aes(x=bty_avg)) +
+  geom_histogram( binwidth = 0.5 ) +
+  labs(x = "Beauty score", y = "count",
+       title = 'Beauty')
+
+SMB <- ggplot(evals, aes(x = bty_avg, y = score)) +
+  geom_point() +
+  labs(x = "beauty score", y = "teaching score",
+       title = 'Score ~ Beauty')
+
+SMB_jitter <- ggplot(evals, aes(x = bty_avg, y = score)) +
+  geom_jitter() +
+  labs(x = "beauty score", y = "teaching score",
+       title = 'Score ~ Beauty w/ jitter')
+
+grid.arrange( score_plot, beauty_plot, SMB, SMB_jitter, ncol = 2 )
+
+evals %>%
+  summarize(correlation = cor(score, bty_avg))
+```
+
+### The Modeling Problem for Prediction
+
+The mechnics are similar, but subtle differences with the goals:  
+
+* **Explanation**: We care about the form of $\hat{f}()$, in particular any values quantifying relationships between $y$ and $\vec{x}$ (e.g. model coefficients)
+* **Prediction**: We don't care so much about the form of $\hat{f}()$, only that it yields 'good' predictions $\hat{y}$ of $y$ based on $\vec{x}$
+
+EDA using the categorical feature, `condition`:
+```{r}
+house_prices <- house_prices %>%
+  mutate( log10_price = log10( price ) )
+
+house_prices %>%
+  select( log10_price, condition ) %>%
+  glimpse() %>%
+  ggplot( aes( x = condition, y = log10_price ) ) +
+  geom_boxplot() +
+  labs( x = 'house condition', y = 'log10 price',
+        title = 'log10 house price over condition')
+```
+
+As the house condition improves, there is an increase in median house price.
+
+```{r}
+sumvals <- house_prices %>%
+  group_by( condition ) %>%
+  summarize( mean = mean( log10_price ),
+             sd = sd( log10_price ),
+             n = n() )
+sumvals
+```
+
+from the summary stats we see that the mean increases with condition, therestandard deviation varies between condition levels and there are uneven numbers of houses in each group (most in 3 >> 4 > 5).  
+
+```{r}
+sumvals %>%
+  mutate( mean = 10^( as.numeric( mean ) ) ) %>%
+  select( condition, mean )
+```
+
+EDA of relationship of house price and waterfront
+```{r}
+# View the structure of log10_price and waterfront
+house_prices %>%
+  select(log10_price, waterfront) %>%
+  glimpse()
+
+# Plot 
+ggplot(house_prices, aes(x = waterfront, y = log10_price)) +
+  geom_boxplot() +
+  labs(x = "waterfront", y = "log10 price")
+
+# Calculate stats
+house_prices %>%
+  group_by(waterfront) %>%
+  summarize(mean_log10_price = mean( log10_price), n = n())
+
+# Prediction of price for houses with view
+10^(6.12)
+
+# Prediction of price for houses without view
+10^(5.66)
+```
+
+
+<br><br><br>
