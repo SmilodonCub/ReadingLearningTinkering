@@ -1,0 +1,173 @@
+---
+title: 'Correlation and Regression in`R`'
+subtitle: 'DataCamp: Statistics with `R'`
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+library( openintro )
+```
+
+### Visualizing two variables
+
+#### Visualizing bivariate relationships
+
+* both variables are numeric
+* response variable: y = dependant variable
+* explanatory variable: x = independent/predictor variable. Basically, something you think might be related to the dependant/response variable
+
+Graphical Representations with Scatter plots.  
+convention: dependet/response variable on the x-axis and the dependent variable on the y-axis.
+
+```{r}
+#glimpse( possum )
+simplescatter <- ggplot( data = possum, aes( y = total_l, x = tail_l ) ) +
+  geom_point() +
+  labs( x = 'tail length (cm)', y = 'body length (cm)',
+        title = 'Start with a Simple Scatter Plot' )
+
+scattercut <- ggplot( data = possum, aes( y = total_l, x = cut( tail_l , breaks = 5 ) ) ) +
+  geom_point() +
+  labs( x = 'tail length (cm)', y = 'body length (cm)',
+        title = 'Cut the distribution into discrete ranges' )
+
+boxcut <- ggplot( data = possum, aes( y = total_l, x = cut( tail_l , breaks = 5 ) ) ) +
+  geom_boxplot() +
+  labs( x = 'tail length (cm)', y = 'body length (cm)',
+        title = 'Plot as Boxplot' )
+
+grid.arrange( simplescatter, scattercut, boxcut, ncol = 3 )
+```
+
+```{r}
+glimpse( ncbirths )
+```
+
+```{r}
+ncbirths <- ncbirths %>% na.omit()
+
+simplescatter <- ggplot( ncbirths, aes( y = weight, x = weeks) ) +
+  geom_point() +
+  labs( x = 'weeks of gestation', y = 'birth weight' )
+
+boxcut <- ggplot( ncbirths, aes( y = weight, x = cut( weeks, breaks = 5 ) ) ) +
+  geom_boxplot() +
+  labs( x = 'weeks of gestation', y = 'birth weight' )
+
+grid.arrange( simplescatter, boxcut, ncol = 2 )
+```
+
+#### Characterizing Bivariate Relationships
+
+* Form ( linear, quadratic, non-linear )
+* Direction ( positive or negative )
+* Strength ( how much scatter/noise )
+* Outliers
+
+```{r}
+glimpse( mammals )
+```
+```{r}
+wilddat <- ggplot( mammals, aes( x = body_wt, y = brain_wt ) ) +
+geom_point()
+
+log10coord <- ggplot(data = mammals, aes(x = body_wt, y = brain_wt)) +
+  geom_point() + 
+  coord_trans(x = "log10", y = "log10")
+
+log10scale <- ggplot(data = mammals, aes(x = body_wt, y = brain_wt)) +
+  geom_point() +
+  scale_x_log10() + 
+  scale_y_log10()
+
+grid.arrange( wilddat, log10coord, log10scale, ncol = 3 )
+```
+
+```{r}
+glimpse( mlbbat10 )
+```
+```{r}
+# Baseball player scatterplot
+ggplot( mlbbat10, aes( x = obp, y = slg ) ) +
+geom_point()
+```
+
+```{r}
+glimpse( bdims )
+```
+```{r}
+# Body dimensions scatterplot
+ggplot( bdims, aes( x = hgt, y = wgt, color = factor( sex ) ) ) +
+geom_point()
+```
+```{r}
+glimpse( smoking )
+```
+```{r}
+# Smoking scatterplot
+ggplot( smoking, aes( x = age, y = amt_weekdays, color = factor( gender ) ) ) +
+geom_point()
+```
+
+#### Outliers
+There's no real definition of an outlier. Judgement call you gotta make.
+
+```{r}
+basicmlb <- ggplot( mlbbat10, aes( x = stolen_base, y = home_run )) +
+  geom_point()
+
+alphamlb <- ggplot( mlbbat10, aes( x = stolen_base, y = home_run )) +
+  geom_point( alpha = 0.5 )
+
+jittermlb <- ggplot( mlbbat10, aes( x = stolen_base, y = home_run )) +
+  geom_jitter( alpha = 0.5 )
+
+grid.arrange( basicmlb, alphamlb, jittermlb, ncol = 3 )
+```
+Use `dplyr` methods to identify outliers based on a (subjective) criterion
+```{r}
+mlbbat10 %>%
+  filter( stolen_base > 60 | home_run > 50 ) %>%
+  select( name, team, position, stolen_base, home_run )
+```
+
+```{r}
+# Filter for AB greater than or equal to 200
+ab_gt_200 <- mlbbat10 %>%
+  filter(at_bat >= 200) 
+
+# Scatterplot of SLG vs. OBP
+ggplot(ab_gt_200, aes(x = obp, y = slg)) +
+  geom_point()
+
+# Identify the outlying player
+ab_gt_200 %>%
+  filter( obp < 0.200 )
+```
+
+
+
+### Correlation
+
+
+### Simple Linear Regression
+
+
+### Interpretin regression models
+
+
+### Model fit
+
+
+<br><br><br>
