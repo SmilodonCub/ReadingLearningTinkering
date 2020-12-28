@@ -1,0 +1,912 @@
+---
+title: 'Modeling with Data in the Tidyverse'
+subtitle: 'DataCamp: Statistics with R'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( moderndive )
+library( gapminder )
+library( stringr )
+library( gridExtra )
+```
+
+## Background on Modeling for Exploration
+
+General modeling framework formula:
+$$y = f( \vec{x}) + \epsilon$$
+
+* $y$: outcome variable of interest
+* $\vec{x}$: explanatory/predictor variable(s)
+* $f()$: function making the relationship between $y$ and $\vec{x}$ explicit. AKA: the signal
+* $\epsilon$: unsystematic error component. AKA the noise
+
+Motives for modeling  
+
+* **Explanation**: $\vec{x}$ are explanatory variables within data range
+* **Prediction**: $\vec{x}$ are prediction variables beyond data range
+
+```{r}
+glimpse( evals )
+```
+
+Exploratory Data Analysis  
+
+1. Looking at the data (e.g. w/ str() or glimpse())
+2. Creating Visualizations
+3. Computing Summary Statistics
+
+```{r}
+#visualize the numeric feature score
+ggplot( evals, aes( x = score ) ) +
+  geom_histogram( binwidth = 0.25 ) +
+  labs( x = 'teaching score', y = 'count' )
+```
+
+```{r}
+evals %>%
+  summarise( mean_score = mean( score ),
+             median_score = median( score ),
+             sd_score = sd( score ) )
+```
+
+```{r}
+# Compute summary stats
+evals %>%
+  summarise(mean_age = mean(age),
+            median_age = median(age),
+            sd_age = sd(age))
+
+# Plot the histogram
+ggplot(evals, aes(x = age)) +
+  geom_histogram(binwidth = 5) +
+  labs(x = "age", y= "count")
+```
+
+```{r}
+# Compute summary stats
+evals %>%
+  summarise(mean_cls_students = mean(cls_students),
+            median_cls_students = median(cls_students),
+            sd_cls_students = sd(cls_students))
+
+# Plot the histogram
+ggplot(evals, aes(x = cls_students)) +
+  geom_histogram(binwidth = 10) +
+  labs(x = "cls_students", y= "count")
+```
+
+```{r}
+evals %>%
+  summarise(mean_bty_avg = mean(bty_avg),
+            median_bty_avg = median(bty_avg),
+            sd_bty_avg = sd(bty_avg),
+            min_bty_avg = min( bty_avg),
+            max_bty_avg = max( bty_avg ))
+
+# Plot the histogram
+ggplot(evals, aes(x = bty_avg)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "bty_avg", y= "count")
+```
+
+### Background on Modeling for Prediction
+
+**Question**: Can we predict the sale price of houses based on their features?  
+Variables:  
+
+* $y$: House sale `price` in USD
+* $\vec{x}$: Features like `sqft_living`, `condition`, `bedrooms`, `yr_built`, `waterfront`
+
+```{r}
+kc_data_url <- 'https://raw.githubusercontent.com/SmilodonCub/ReadingLearningTinkering/master/DataCamp/Statistics_with_R/kc_house_data.csv'
+house_price_kg <- read.csv( kc_data_url )
+glimpse( house_price_kg )
+```
+
+```{r}
+glimpse( house_prices )
+```
+
+```{r}
+all_equal( house_prices, house_price_kg )
+```
+
+DataCamp made some small changes to the kaggle dataset. Here I try to wrangle to kaggle set into the same condition that the course prepared it using `dplyr` methods.
+
+```{r}
+house_price_kg2 <- house_price_kg %>%
+  mutate( id = as.character( id ),
+          date = as.Date( date, format = "%Y%m%d" ),
+          waterfront = as.logical( waterfront ),
+          condition = factor( condition ),
+          grade = factor( grade ),
+          zipcode = factor( zipcode )) %>%
+  mutate( id = if_else(nchar(id)<10, stringr::str_pad(id,width=10,side="left",pad="0"), id) )
+rownames( house_price_kg2 ) <- c()
+```
+
+```{r}
+#all_equal( house_prices, house_price_kg2 )
+all.equal( house_price_kg2, house_prices )
+```
+Good enough for the government. Now back to following the demo... 
+
+Visualization:
+```{r}
+ggplot( house_prices, aes( x = price ) ) +
+  geom_histogram() +
+  labs( x = 'house price', y = 'count' )
+```
+
+The distribution has is right skewed (with a long tail leading to the right of the distribution). This structure will make it difficult to compare lower valued housing prices. This finding is similar to the gapminder dataset:
+
+```{r}
+gapminder %>%
+  filter( year == 1952 ) %>%
+  ggplot( aes( x=pop, y=lifeExp, color=continent ) ) +
+  geom_point() +
+  ggtitle( '1952 country-level life expectancy vs population' )
+```
+
+Rescale the data on a log10 scale to beter distinguish data points in the lower price range
+```{r}
+gapminder %>%
+  filter( year == 1952 ) %>%
+  ggplot( aes( x=log10( pop ), y=lifeExp, color=continent ) ) +
+  geom_point() +
+  ggtitle( 'Log10 rescaling: 1952 country-level life expectancy vs population' )
+```
+
+With the rescaling, horizontal distances on the X-axis now correspond to multiplicate differences instead of additive.  
+
+Now to try something similar with the `house_prices` dataset
+```{r}
+house_price_scaled <- house_prices %>%
+  mutate( log10_price = log10( price ) ) %>%
+  select( price, log10_price )
+```
+
+**Monotonic transform**: the order is preserved.
+
+```{r}
+native_scale <- ggplot( house_prices, aes( x = price ) ) +
+  geom_histogram() +
+  labs( x = 'house price', y = 'count' ) +
+  ggtitle( 'Price' )
+
+log10_scale <- ggplot( house_price_scaled, aes( x = log10_price ) ) +
+  geom_histogram() +
+  labs( x = 'log10 house price', y = 'count' ) +
+  ggtitle( 'log10( Price )' )
+
+grid.arrange( native_scale, log10_scale, ncol = 2 )
+```
+
+After transformation, the `price` distribution is much less skewed. Pretty much normal.
+
+Now to see if the predictor feature, `sqft_living` warrants a similar transformation
+```{r}
+# Plot the histogram
+ggplot(house_prices, aes(x = sqft_living)) +
+  geom_histogram() +
+  labs(x = 'Size (sq.feet)', y='count')
+```
+
+The distribution is right skewed.
+```{r}
+# Add log10_size
+house_prices_2 <- house_prices %>%
+  mutate(log10_size = log10(sqft_living))
+
+native_scale <- ggplot( house_prices, aes( x = sqft_living ) ) +
+  geom_histogram() +
+  labs( x = 'size', y = 'count' ) +
+  ggtitle( 'Size' )
+
+log10_scale <- ggplot( house_prices_2, aes( x = log10_size ) ) +
+  geom_histogram() +
+  labs( x = 'log10 size', y = 'count' ) +
+  ggtitle( 'log10( Sie )' )
+
+grid.arrange( native_scale, log10_scale, ncol = 2 )
+```
+
+### Modeling the Problem for Explanation
+
+1. Generally, $f()$ and $\epsilon$ are unknown
+2. Unknown: $n$: the number of observations, $y$ and $\vec{x}$ are given in the dataset
+3. **Goal**: fit a model, $\hat{f}()$ that approximates $f()$ while ignoring $\epsilon$
+4. **Goal Restated**: separate the signal from the noise
+5. with the model, can then generate fitted/predicted values $\hat{y}=\hat{f}(\vec{x})$
+
+Modelling: exploring relationships between variables.
+EDA of relationship between 2 variables: `age` & `score`
+```{r}
+pnt_plot <- ggplot( evals, aes( x = age, y = score ) ) +
+  geom_point() +
+  labs( x = 'age', y = 'score', title = 'Teaching score over age' )
+
+jitter_plot <- ggplot( evals, aes( x = age, y = score ) ) +
+  geom_jitter() +
+  labs( x = 'age', y = 'score', title = 'Teaching score over age' )
+
+grid.arrange( pnt_plot, jitter_plot, ncol = 2 )
+```
+
+Is the relationship positive? investigate with the **correlation coefficient**
+```{r}
+evals %>%
+  summarize( correlation = cor( score, age ) )
+```
+
+The negative correlation suggests that as professor age, they tend to get lower scores.
+
+EDA of relationship of teaching & 'beauty' scores
+```{r}
+# Plot the histogram
+score_plot <- ggplot(evals, aes(x=score)) +
+  geom_histogram( ) +
+  labs(x = "Score", y = "count",
+       title = 'Score')
+
+beauty_plot <- ggplot(evals, aes(x=bty_avg)) +
+  geom_histogram( binwidth = 0.5 ) +
+  labs(x = "Beauty score", y = "count",
+       title = 'Beauty')
+
+SMB <- ggplot(evals, aes(x = bty_avg, y = score)) +
+  geom_point() +
+  labs(x = "beauty score", y = "teaching score",
+       title = 'Score ~ Beauty')
+
+SMB_jitter <- ggplot(evals, aes(x = bty_avg, y = score)) +
+  geom_jitter() +
+  labs(x = "beauty score", y = "teaching score",
+       title = 'Score ~ Beauty w/ jitter')
+
+grid.arrange( score_plot, beauty_plot, SMB, SMB_jitter, ncol = 2 )
+
+evals %>%
+  summarize(correlation = cor(score, bty_avg))
+```
+
+### The Modeling Problem for Prediction
+
+The mechnics are similar, but subtle differences with the goals:  
+
+* **Explanation**: We care about the form of $\hat{f}()$, in particular any values quantifying relationships between $y$ and $\vec{x}$ (e.g. model coefficients)
+* **Prediction**: We don't care so much about the form of $\hat{f}()$, only that it yields 'good' predictions $\hat{y}$ of $y$ based on $\vec{x}$
+
+EDA using the categorical feature, `condition`:
+```{r}
+house_prices <- house_prices %>%
+  mutate( log10_price = log10( price ) )
+
+house_prices %>%
+  select( log10_price, condition ) %>%
+  glimpse() %>%
+  ggplot( aes( x = condition, y = log10_price ) ) +
+  geom_boxplot() +
+  labs( x = 'house condition', y = 'log10 price',
+        title = 'log10 house price over condition')
+```
+
+As the house condition improves, there is an increase in median house price.
+
+```{r}
+sumvals <- house_prices %>%
+  group_by( condition ) %>%
+  summarize( mean = mean( log10_price ),
+             sd = sd( log10_price ),
+             n = n() )
+sumvals
+```
+
+from the summary stats we see that the mean increases with condition, therestandard deviation varies between condition levels and there are uneven numbers of houses in each group (most in 3 >> 4 > 5).  
+
+```{r}
+sumvals %>%
+  mutate( mean = 10^( as.numeric( mean ) ) ) %>%
+  select( condition, mean )
+```
+
+EDA of relationship of house price and waterfront
+```{r}
+# View the structure of log10_price and waterfront
+house_prices %>%
+  select(log10_price, waterfront) %>%
+  glimpse()
+
+# Plot 
+ggplot(house_prices, aes(x = waterfront, y = log10_price)) +
+  geom_boxplot() +
+  labs(x = "waterfront", y = "log10 price")
+
+# Calculate stats
+house_prices %>%
+  group_by(waterfront) %>%
+  summarize(mean_log10_price = mean( log10_price), n = n())
+
+# Prediction of price for houses with view
+10^(6.12)
+
+# Prediction of price for houses without view
+10^(5.66)
+```
+
+## Modeling with Basic Regression
+
+### Explaining Teaching Score with Age
+
+Basic Linear Regression. Adding a linear best-fit line to describe a relationship between features
+```{r}
+ggplot( evals, aes( x = age, y = score ) ) +
+  geom_point() +
+  labs( x = 'age', y = 'score', title = 'Teaching score over age' ) +
+  geom_smooth( method = 'lm', se = FALSE )
+
+```
+
+The overall relationship between the variables `score` and `age` is negative; the scores have a tendancy to decrease with increasing age. This result is consistent with the correlation between the features, correlation = `r cor( evals$score, evals$age )`  
+NOTE: correlation $\neq$ causation!
+
+#### Modeling with basic linear regression
+
+* **Truth**:
+  + Assume the relationship can be described with a line
+  + $f(x) = \beta_0 + \beta_1 \cdot x$
+  + the *Observed* value $y = f(x) + \epsilon = \beta_0 + \beta_1 \cdot x + \epsilon$
+* **Fitted**:
+  + Assume $\hat{f}(x) = \hat{\beta}_0 + \hat{\beta}_1 \cdot x$
+  + the *Fitted/Predicted* values $\hat{y} = \hat{f}(x)= \hat{\beta}_0 + \hat{\beta}_1 \cdot x$
+  
+Let `R` compute the coefficients $\hat{\beta}_0$ & $\hat{\beta}_1$   
+```{r}
+#Fit regression model using formula of form: y ~ x
+model_score_1 <- lm( score ~ age, data = evals )
+model_score_1
+```
+
+How to interpret?
+
+* Intercept: 4.46193 has no practical meaning, represents the score at age = 0.
+* Slope: -0.00594 for evering year increase in age, there is a corresponding decrease of 0.00594 beauty score.
+
+```{r}
+#from the moderndive library:
+( get_regression_table( model_score_1 ) )
+
+#using summary
+#almost what moderndive is doing. add confidence intervals and reformat as table tho
+summod <- summary( model_score_1 )
+regtab <- data.frame( round( summod$coefficients, 4 ) )
+regtab
+```
+
+#### Linear model attempt of score ~ beauty_avg
+
+```{r}
+# Plot 
+ggplot(evals, aes(x = bty_avg, y = score)) +
+  geom_jitter() +
+  labs(x = "beauty score", y = "score") +
+  geom_smooth(method = 'lm', se = FALSE )
+```
+```{r}
+# Fit model
+model_score_2 <- lm(score ~ bty_avg, data = evals)
+
+# Output content
+model_score_2
+
+# Output regression table
+get_regression_table(model_score_2)
+```
+  
+According to our linear model, for every point increase in beauty score, you should observe an associated increase of on average 0.067 points in teaching score.  
+
+### Predicting Teaching Score using Age
+Making predictions about a target variable.  
+the regression line can be used for both estimate and prediction of a feature
+$$\hat{y} = \hat{f}(x) = \hat{\beta}_0 + \hat{\beta}_1 \cdot x $$
+Ex: a professor's age is 40. What is the predicted score?
+$$\hat{y} = 4.46 - 0.006 \cdot 40 = 4.22$$
+
+#### Predictions Error
+**Prediction Error** = difference between observed and predicted values  
+
+* Residual = $y - \hat{y}$
+* Residuals correspond to the $\epsilon$ from the $y = f(\vec{x})+\epsilon
+
+What is meant by a 'best-fit' line: this is the line that minimizes the magnitudes of the residuals
+
+#### Making predictions of `score` based on beauty
+
+```{r}
+get_regression_table(model_score_2)
+test_beautyscore <- data.frame( bty_avg = 5 )
+y_hat <- model_score_2 %>% predict( test_beautyscore )
+y_hat
+```
+
+a value of 4.7 is observed
+```{r}
+# Compute residual y - y_hat
+residual <- 4.7 - y_hat
+residual
+```
+
+the `moderndive` library has some nifty wrapper fxns to help find the residuals.....
+```{r}
+# Get regression table
+get_regression_table(model_score_2)
+
+# Get all fitted/predicted values and residuals
+get_regression_points(model_score_2)
+```
+
+...but let's do the work and use dplyr methods to find them:
+```{r}
+evals_residuals <- evals %>%
+  select( ID, score, bty_avg ) %>%
+  mutate( score_hat = predict( model_score_2, . ),
+          residual = score - score_hat )
+head( evals_residuals, 10 )
+```
+
+Bingo!, that wasn't so hard and didnt take too much code. On the other hand, it sure is nice to have convenient wrapper functions.
+
+#### Explaining Teaching Score with Gender
+Logistic Regression: binary categorical variable
+```{r}
+sg_box <- ggplot( evals, aes( x = gender, y = score ) ) +
+  geom_boxplot() +
+  labs( x = 'gender', y = 'score' )
+
+sg_hist <- ggplot( evals, aes( x = score, fill = gender ) ) +
+  geom_histogram( binwidth = 0.25 ) +
+  labs( x = 'gender', y = 'score' )
+
+grid.arrange( sg_box, sg_hist, ncol = 2 )
+```
+
+```{r}
+#fit regression model
+model_score_3 <- lm( score ~ gender, data = evals )
+
+#get the regression table
+get_regression_table( model_score_3 )
+
+#plot summary too just cause I'm used to seeing this
+summary( model_score_3 )
+```
+sanity check by computing the means of each group
+```{r}
+evals %>%
+  group_by( gender ) %>%
+  summarise( avg_score = mean( score ) )
+```
+
+#### Use another categorical variable: `rank`
+```{r, message=FALSE}
+evals %>%
+  group_by( rank ) %>%
+  summarize( n = n() )
+```
+EDA of relationship of `score` and `rank`
+```{r}
+ggplot(evals, aes( x = rank, y = score)) +
+  geom_boxplot() +
+  labs(x = "rank", y = "score")
+```
+Look at some summary stats
+```{r, message = FALSE}
+evals %>%
+  group_by(rank) %>%
+  summarise(n = n(), mean_score = mean(score), sd_score = sd(score))
+```
+Fit a linear regression model to the data
+```{r}
+# Fit regression model
+model_score_4 <- lm(score ~ rank, data = evals)
+
+# Get regression table
+get_regression_table(model_score_4)
+```
+Calculate some values from the regression table outcome
+```{r}
+# teaching mean
+teaching_mean <- 4.28
+
+# tenure track mean
+tenure_track_mean <- teaching_mean - 0.13
+
+# tenured mean
+tenured_mean <- teaching_mean - 0.145
+
+mes <- paste( 'Teaching Mean:', round( teaching_mean, 3),
+              '\nTenure Track Mean:', round( tenure_track_mean, 3 ),
+              '\nTenured:', round( tenured_mean, 3 ) )
+cat( mes, sep = '\n')
+```
+Do we get the same result using dplyr methods?
+```{r}
+evals %>%
+  group_by( rank ) %>%
+  summarise( mean = mean( score ) )
+```
+Yes, the values check out.
+
+### Predicting Teaching Score using Gender
+Predicting with a categorical variable
+```{r}
+evals %>%
+  group_by( gender ) %>%
+  summarize( mean_score =mean( score ), sd_score = sd( score ) )
+```
+Now to find the residuals for all records
+```{r}
+get_regression_points( model_score_3 )
+
+#OR
+evals_residuals <- evals %>%
+  select( ID, score, gender ) %>%
+  mutate( score_hat = predict( model_score_3, . ),
+          residual = score - score_hat )
+head( evals_residuals, 10 )
+```
+Plot a histogram of the residuals
+```{r}
+ggplot( evals_residuals, aes( x = residual ) ) +
+  geom_histogram() +
+  labs( x = 'residuals',
+        title = 'Residuals from score ~ gender' )
+```
+The residuals are roughly centered on 0
+
+A quick look at predicting score ~ rank
+```{r}
+# Calculate predictions and residuals
+model_score_4_points <- get_regression_points(model_score_4)
+model_score_4_points
+
+# Plot residuals
+ggplot(model_score_4_points, aes( x = residual )) +
+  geom_histogram() +
+  labs(x = "residuals", title = "Residuals from score ~ rank model")
+```
+
+## Modeling with Multiple Regression
+
+### Explaining house price with year and size
+Multiple Linear Regression with numeric features
+
+```{r}
+house_prices <- house_prices %>%
+  mutate( log10_price = log10( price ),
+          log10_size = log10( sqft_living ) )
+```
+
+3D Scatter Plot: Visualizing the oint relationship between 3 variables.  
+The generalization of a regression line in a 3D plot is a regression plane. Of all possible planes, the regression plane minimizes the residuals (descrepancy between observed and predicted values)
+```{r}
+#use plotly
+```
+
+Quantifying the relationship:
+```{r}
+model_price_1 <- lm( log10_price ~ log10_size + yr_built,
+                     data = house_prices )
+get_regression_table( model_price_1)
+```
+
+Interpreting: Taking into account the other variables used to build, a given features has an associated mean change of the estimate per unit measure. Ex: taking into account `yr_built`, `log10_size` increases by 0.913 in price on average.
+
+
+EDA of relationships
+```{r}
+# Create scatterplot with regression line
+nativedat <- ggplot(house_prices, aes(x = bedrooms, y = log10_price)) +
+  geom_point() +
+  labs(x = "Number of bedrooms", y = "log10 price") +
+  geom_smooth(method = "lm", se = FALSE)
+
+# Remove outlier
+house_prices_transform <- house_prices %>%
+  filter( bedrooms < 15 )
+
+# Create scatterplot with regression line
+dat_outlier_rm <- ggplot(house_prices_transform, aes(x = bedrooms, y = log10_price)) +
+  geom_point() +
+  labs(x = "Number of bedrooms", y = "log10 price") +
+  geom_smooth(method = "lm", se = FALSE)
+
+grid.arrange( nativedat, dat_outlier_rm, ncol = 2 )
+```
+
+fit a multiple linear regression model
+```{r}
+# Fit model
+model_price_2 <- lm(log10_price ~ log10_size + bedrooms, 
+                    data = house_prices)
+
+# Get regression table
+get_regression_table( model_price_2 )
+```
+
+Accounting for `log10_size`, every extra bedroom is associated with a decrease of an average 0.033 in `log10_price`
+
+#### Predicting House Price using Year & Size
+```{r}
+get_regression_table( model_price_1)
+```
+```{r}
+#make a prediction of log10_price = 3.07 and year = 1980
+newval <- data.frame( 'log10_size' = 3.06, 'yr_built' = 1980 )
+prediction <- newval %>% 
+  mutate( log10_price = predict( model_price_1, . ),
+          price = 10^( log10_price ) )
+prediction
+```
+
+Compute all Predicted values and Residuals
+```{r}
+#using moderndive methods
+get_regression_points( model_price_1 )
+```
+
+```{r}
+#using dplyr methods
+price_residuals <- house_prices %>%
+  select( id , log10_price, log10_size, yr_built ) %>%
+  mutate( log10_price_hat = predict( model_price_1, . ),
+          residual = log10_price - log10_price_hat )
+head( price_residuals, 10 )
+```
+
+Sum of Squared Residuals:
+The sum of squared residuals is difficult to interpret in absolue terms, but is handy to use to compare the performance between other modeling approaches
+```{r}
+sumsqrres <- price_residuals %>% summarise( sum( residual^2 ) )
+sumsqrres
+```
+
+Modeling Price by Size and Bedrooms
+```{r}
+# Automate prediction and residual computation
+get_regression_points(model_price_2) %>%
+  mutate(sq_residuals = residual^2) %>%
+  summarize(sum_sq_residuals = sum(sq_residuals))
+```
+
+Residuals: is the observed oucomeminus the predicted variable. They can be thought of as prediction errors or as the lack-of-fit of the predictions to truth.
+
+#### Explaining House Price with Size & Condition
+Using both numeric and categorical variables
+
+```{r}
+model_price_3 <- lm( log10_price ~ log10_size,
+                     data = house_prices )
+
+house_prices %>%
+  mutate( prediction = predict( model_price_3, . ) ) %>%
+  ggplot( aes( x = log10_size, y = log10_price, color = condition, fill = FALSE ) ) +
+  geom_point( ) +
+  labs( x = 'log 10 square footage',
+        y = 'log 10 price' ) +
+  geom_line( aes( x = log10_size, y = prediction ), size = 2, color = 'black' )
+```
+
+```{r}
+house_prices %>%
+  mutate( prediction = predict( model_price_3, . ) ) %>%
+  ggplot( aes( x = log10_size, y = log10_price, color = condition, fill = FALSE ) ) +
+  geom_point( ) +
+  labs( x = 'log 10 square footage',
+        y = 'log 10 price' ) +
+  geom_smooth(method = "lm", se = FALSE, size = 2) 
+```
+
+Parallel Slopes Model: all 5 condition levels are described by the same slope but with different intercepts.
+```{r}
+house_prices %>%
+  mutate( prediction = predict( model_price_3, . ) ) %>%
+  ggplot( aes( x = log10_size, y = log10_price, color = condition ) ) +
+  geom_point( ) +
+  labs( x = 'log 10 square footage',
+        y = 'log 10 price' ) +
+  geom_smooth(method = "lm", se = FALSE, size = 2, color = 'red') +
+  geom_line( aes( x = log10_size, y = prediction ), size = 2, color = 'black' ) +
+  facet_wrap( ~condition )
+```
+
+Quantify the relationship
+```{r}
+model_price_3 <- lm( log10_price ~ log10_size + condition, data = house_prices )
+get_regression_table( model_price_3 )
+```
+
+Parallel slopes model but with `waterfront`
+```{r}
+# Fit model
+model_price_4 <- lm(log10_price ~ log10_size + waterfront, 
+                    data = house_prices)
+
+# Get regression table
+get_regression_table(model_price_4)
+```
+
+#### Predicting House Price using Size and Condition
+Making predictions on new data. Using values in `estimate` in regression tables
+```{r}
+get_regression_table( model_price_3 )
+```
+
+```{r}
+#create a new data frame for the new values
+new_houses <- data.frame( log10_size = c( 2.9, 3.6 ),
+                          condition = factor( c( 3, 4 ) ) )
+( new_houses )
+
+#make predictions on new data
+get_regression_points( model_price_3, newdata = new_houses ) %>%
+  mutate( price_hat = 10^log10_price_hat )
+```
+
+```{r}
+new_houses <- data.frame( log10_size = c( 2.9, 3.1 ),
+                          waterfront = c( TRUE, FALSE ) )
+get_regression_points( model_price_4, newdata = new_houses ) %>%
+  mutate( price_hat = 10^log10_price_hat )
+```
+
+### Model Assessment and Selection
+How do you know which model to choose? Which model is best?  
+Assessing quality of multiple regression models  
+
+Model 1: 2 numerical features. log10_size and yr_build -> SSR = 585  
+Model 3: numerical:: log10_size & a categorical:: condition -> SSR = 608  
+
+Model 3 has a larger sum of squared residuals value & is therefore not as good of a fit as Model 1.
+
+```{r}
+# now to find the sum of squared residuals for Model 2 & Model 4
+# Calculate squared residuals Model 2
+get_regression_points( model_price_2) %>%
+mutate( sq_residuals = residual^2) %>%
+summarise( sum_sq_residuals = sum( sq_residuals))
+
+# Calculate squared residuals Model 4
+get_regression_points(model_price_4) %>%
+  mutate(sq_residuals = residual^2) %>%
+  summarize(sum_sq_residuals = sum( sq_residuals))
+```
+
+#### Assessing Model Fit with R-squared
+**R-Squared**
+$$R^2=\frac{Var(\mbox{residuals})}{Var(\mbox{y})}=\frac{\mbox{Variance of the Residuals}}{\mbox{Variance of the Outcome Variable}}$$
+While the sum of squared residuals in unbounded, $R^2$ is standardized to be between 0 & 1 where smaller values of $R^2$ indicate poor model fit and values approahing 1 indicate a good fit to the data.  
+
+* $R^2 = 1 \longrightarrow$ perfect fit
+* $R^2 = 0 \longrightarrow$ no relationship between target variable and modelled features
+
+**$R^2$'s Interpretation**: the proportion of the total variation in the outcome variable $y$ that the model explains
+
+```{r}
+#Compute the R^2 val of Model 1
+get_regression_points( model_price_1 ) %>%
+  summarise( r_squared = 1 - var( residual )/var( log10_price ) )
+```
+```{r}
+#Compute the R^2 val of Model 3
+get_regression_points( model_price_3 ) %>%
+  summarise( r_squared = 1 - var( residual )/var( log10_price ) )
+```
+```{r}
+#Compute the R^2 val of Model 2
+get_regression_points(model_price_2) %>%
+  summarise(r_squared = 1 - var( residual )/var( log10_price ))
+```
+```{r}
+#Compute the R^2 val of Model 4
+get_regression_points(model_price_4) %>% 
+  summarise(r_squared = 1 - var( residual )/var( log10_price ))
+```
+
+#### Assessing Predictions with RMSE
+Root Mean Squared Error: Square -root of the Mean Squared Error (gets back to the same units as the target variable). RMSE can be thought of as the typical error that the model will make.
+```{r}
+# Root Mean Squared Error
+get_regression_points( model_price_1 ) %>%
+  mutate( sq_residuals = residual^2 ) %>%
+  summarize( mse = mean( sq_residuals ) ) %>%
+  mutate( rmse = sqrt( mse ) )
+```
+
+Get the predicted values and rmse of new values
+```{r}
+#Get predictions
+new_houses2 <- data_frame( log10_size = c( 2.9, 3.6 ), condition = factor( c( 3, 4 ) ) )
+get_regression_points( model_price_3, newdata = new_houses2 ) %>%
+  mutate( sq_residuals = residual^2 ) %>%
+  summarize( mse = mean( sq_residuals ) ) %>%
+  mutate( rmse = sqrt( mse ) )
+```
+
+#### Validation Set Prediction framework
+Use two independent datasets to:
+
+1. Train/fit your model
+2. Evaluate your model's predictive power i.e. validate your model
+
+**Train/test set split**  
+Randomly split all $n$ observations into  
+
+1. a *training* set: to fit models
+2. a *test* set: to make predictions on
+
+By using independent samples from the dataset to test/train a model, you can get a sense of how the model will perform on new data.  
+
+```{r}
+#Randomly shuffle order of rows:
+house_prices_shuffled <- house_prices %>%
+  sample_frac( size = 1, replace = FALSE) #sample everything without replacement
+
+#split into train and test
+train <- house_prices_shuffled %>%
+  slice( 1:10000 )
+test <- house_prices_shuffled %>%
+  slice( 10001:dim( house_prices)[1] )
+```
+
+Train the Model on Training Data
+```{r}
+train_model_price_1 <- lm( log10_price ~ log10_size + yr_built,
+                           data = train )
+get_regression_table( train_model_price_1 )
+```
+
+Make Predictions on test data
+```{r}
+get_regression_points( train_model_price_1, newdata = test )
+```
+
+Assess Predictions with RMSE
+```{r}
+get_regression_points( train_model_price_1, newdata = test ) %>%
+  mutate( sq_residuals = residual^2 ) %>%
+  summarise( rmse = sqrt( mean( sq_residuals ) ) )
+```
+
+Repeat with a different model so that RMSE values can be compared
+```{r}
+train_model_price_3 <- lm( log10_price ~ log10_size + condition,
+                           data = train )
+
+get_regression_points( train_model_price_3, newdata = test ) %>%
+  mutate( sq_residuals = residual^2 ) %>%
+  summarise( rmse = sqrt( mean( sq_residuals ) ) )
+```
+```{r}
+# Fit model to training set
+train_model_2 <- lm( log10_price ~ log10_size + bedrooms, data = train )
+# Compute RMSE
+get_regression_points(train_model_2, newdata = test) %>% 
+  mutate(sq_residuals = residual^2) %>%
+  summarize(rmse = sqrt(mean(sq_residuals)))
+```
+
+
+
+<br><br><br>
