@@ -17,6 +17,9 @@ library( dplyr )
 library( ggplot2 )
 library( gridExtra )
 library( openintro )
+library( tidyverse )
+library( UsingR )
+library( broom )
 ```
 
 ### Visualizing two variables
@@ -160,14 +163,481 @@ ab_gt_200 %>%
 
 ### Correlation
 
+#### Quantifying the Strength of Bivariate Relationships
+
+**Correlation**  
+* Correlation coefficients range from -1 to 1
+* Sign +/- indicates the direction of the relationship
+* Magnitude corresponds to the strength. 
+  + Strong: Correlations with an absolute magnitude close 1
+  + Moderate: "  " close to 0.5
+  + Weak:  "   " close to 0.2
+  + No Relationship:  "  " close to 0
+  
+Non-Linear correlation
+```{r}
+glimpse( run09 )
+run09 %>%
+  filter( div_place <= 10) %>%
+  ggplot( aes( x = age, y = pace, color = gender ) ) +
+  geom_point()
+```
+
+**Pearson Product-Moment Correlation**
+$$r(x,y) = \frac{Cov(x,y)}{\sqrt{SXX \cdot SYY}} = \frac{\sum_{i=1}^{n}(x_i-\bar{x})(y_i-\bar{y})}{\sqrt{\sum_{i=1}^{n}(x_i-\bar{x})^2 \cdot \sum_{i=1}^{n}(y_i-\bar{y})^2}}$$
+Denominator: the sums of the squared deviations of the $x$ and $y$ 
+Numerator: the sum of the terms of $x$ and $y$
+
+```{r}
+#glimpse( ncbirths )
+# Compute correlation
+ncbirths %>%
+  summarize(N = n(), r = cor(weight, mage))
+
+# Compute correlation for all non-missing pairs
+ncbirths %>%
+  summarize(N = n(), r = cor(weight, weeks, use = "pairwise.complete.obs"))
+```
+
+The Anscombe Dataset
+```{r}
+glimpse( anscombe )
+```
+```{r}
+p1 <- ggplot( data = anscombe, aes( x = x1, y = y1 ) ) +
+  geom_point()
+
+p2 <- ggplot( data = anscombe, aes( x = x2, y = y2 ) ) +
+  geom_point()
+
+p3 <- ggplot( data = anscombe, aes( x = x3, y = y3 ) ) +
+  geom_point()
+
+p4 <- ggplot( data = anscombe, aes( x = x4, y = y4 ) ) +
+  geom_point()
+
+grid.arrange( p1, p2, p3, p4, ncol = 2 )
+```
+All four of these data series have the same number of points, the same mean and the same standard deviation in both $x$ and $y$. They yield the same regression line fit and correlation values. However, the distributions are very different from one another.
+
+This demonstration stresses the need to visually inspect your data!
+
+```{r}
+#glimpse( anscombe)
+
+Anscombe <- anscombe %>%
+  pivot_longer( cols = everything(), names_to = 'labs', values_to = 'vals' ) %>%
+  mutate( Xaxis = str_detect( labs, 'x' ) == TRUE,
+          set = case_when( str_detect( labs, '1' ) == TRUE ~ '1',
+                           str_detect( labs, '2' ) == TRUE ~ '2',
+                           str_detect( labs, '3' ) == TRUE ~ '3',
+                           str_detect( labs, '4' ) == TRUE ~ '4'),
+          id = sort ( rep( c( 1:11 ), 8) ))
+AnsX <- Anscombe %>% 
+  filter( Xaxis == TRUE ) %>%
+  rename( X = vals )
+AnsY <- Anscombe %>% 
+  filter( Xaxis == FALSE ) %>%
+  rename( Y = vals)
+Anscombe <- AnsX %>%
+  mutate( Y = AnsY$Y) %>%
+  select( X, Y, set, id )
+Anscombe
+```
+
+```{r}
+ggplot(data = Anscombe, aes(x = X, y = Y)) +
+  geom_point() +
+  facet_wrap(~ set)
+```
+
+```{r}
+# Compute properties of Anscombe
+Anscombe %>%
+  group_by(set) %>%
+  summarize(
+    N = n(), 
+    mean_of_x = mean( x ), 
+    std_dev_of_x = sd( x ), 
+    mean_of_y = mean( y ), 
+    std_dev_of_y = sd( y ), 
+    correlation_between_x_and_y = cor( x,y )
+  )
+```
+
+```{r}
+# Run this and look at the plot
+mlbbat10 %>% 
+    ggplot(aes(x = obp, y = slg)) + 
+    geom_point()
+
+# Correlation for all players with at least 200 ABs
+mlbbat10 %>%
+  summarize(N = n(), r = cor(obp, slg))
+```
+
+```{r}
+# Run this and look at the plot
+mlbbat10 %>% 
+    filter(at_bat > 200) %>%
+    ggplot(aes(x = obp, y = slg)) + 
+    geom_point()
+
+# Correlation for all players with at least 200 ABs
+mlbbat10 %>%
+  filter(at_bat > 200) %>%
+  summarize(N = n(), r = cor(obp, slg))
+```
+
+```{r}
+# Run this and look at the plot
+ggplot(data = bdims, aes(x = hgt, y = wgt, color = factor(sex))) +
+  geom_point() 
+
+# Correlation of body dimensions
+bdims %>%
+  group_by(sex) %>%
+  summarize(N = n(), r = cor(hgt, wgt))
+```
+
+```{r}
+#glimpse( mammals )
+# Run this and look at the plot
+ggplot(data = mammals, aes(x = body_wt, y = brain_wt)) +
+  geom_point() + scale_x_log10() + scale_y_log10()
+
+# Correlation among mammals, with and without log
+mammals %>%
+  summarize(N = n(), 
+            r = cor(body_wt, brain_wt), 
+            r_log = cor(log(body_wt), log(brain_wt)))
+```
+
+#### Interpretation of Correlation
+Correlation $\neq$ Causation  
+  
+#### Spurious Correlations
+Remarkable but nonsensical correlations are called spurious.  
+Two variable may seem to move together as a function of the independent variable, but remember that a strong correlation between two variables does not take in to account confounding relations.
 
 ### Simple Linear Regression
+
+#### Visualization of Linear Models
+
+```{r}
+#glimpse( possum )
+ggplot( data = possum, aes( y = total_l, x = tail_l ) ) +
+  geom_point() +
+  #geom_abline( intercept = 0, slope = 2.5 ) # not a great fit
+  #geom_abline( intercept = 0, slope = 2.3 ) #a gentler slope fits better
+  geom_abline( intercept = 40, slope = 1.3 ) # why for inercept at the origin?
+  
+```
+
+How to determine what line fits the data best?  
+**The best fit line**: least sum of squares residuals
+
+```{r}
+ggplot( possum, aes( y = total_l, x = tail_l ) ) +
+  geom_point() +
+  geom_smooth( method = 'lm' )
+```
+
+```{r}
+# Scatterplot with regression line
+ggplot(data = bdims, aes(x = hgt, y = wgt)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE)
+```
+
+#### Understanding Linear Models
+
+Generic statistical modeling framework:
+$$\mbox{response} = f(\mbox{explanatory}) + \mbox{noise}$$
+For linear regression, we assume the $f()$ takes a linear form
+$$\mbox{response} = f(\mbox{slope}\cdot\mbox{explanatory}) + \mbox{noise}$$
+If we assume that the data behave linearly, it can be modeled as follows:
+$$Y = \beta_0 + \beta_1 \cdot X + \epsilon, \mbox{    where } \epsilon \sim N(0,\sigma_{\epsilon}) $$
+Fitted estimates with the linear model can be described by
+$$\hat{Y} = \hat{\beta}_0 + \hat{\beta}_1 \cdot X$$
+The differences of the two:
+$$\mbox{Residuals    } = e = Y - \hat{Y}$$
+The residuals are the realization of the noise term. $\epsilon$ is an unknown true quantity that describes the noise in the system whereas $e$ is a known estimate of $\epsilon$.  
+
+The goal for determining the coefficients of the best fit is to minimize the sum of squares of the residuals, $\sum_{i=1}^{n}e_i^2$
+
+**Key Concepts**  
+
+* $\hat{Y}$ is the expected value for a given $X$, basically, our best guess
+* $\hat{\beta}$s are estimates of true, unknown $\beta$s
+* Residuals ($e$s) are estimates of true unknown $\epsilon$s
+* Error is a misleading term, better to think of as noise
+
+```{r}
+bdimslm <- lm( wgt ~ hgt, bdims)
+summary( bdimslm )
+```
+
+#### Regression vs. regession to the mean
+Galton's "Regression to the mean"
+
+```{r}
+data( Galton )
+glimpse( Galton )
+
+# Height of children vs. height of father
+ggplot(data = Galton, aes(x = parent, y = child)) +
+  geom_jitter() + 
+  geom_abline(slope = 1, intercept = 0) + 
+  geom_smooth(method = 'lm', se = FALSE)
+```
 
 
 ### Interpretin regression models
 
+#### Interpretation of Regression
+
+```{r}
+glimpse( textbooks )
+```
+```{r}
+textbooks %>% mutate( course_number = readr::parse_number( as.character( course ) ) ) %>%
+  ggplot( aes( x = course_number, y = ucla_new ) ) +
+  geom_point()
+```
+
+```{r}
+textbooks %>%
+  ggplot( aes( x = amaz_new, y = ucla_new ) ) +
+  geom_point() +
+  geom_smooth( method = 'lm' )
+```
+```{r}
+textlm <- lm( ucla_new ~ amaz_new, data = textbooks )
+summary( textlm )
+```
+For each additional dollar that Amazon charges for a book, the UCLA bookstore charges ~$1.20
+
+#### Your Linear Model Object 
+The output from `lm()` is an object. The structure holds all the relevant data to build our model (including the data itself).
+```{r}
+class( textlm )
+```
+```{r}
+textlm
+```
+```{r}
+coef( textlm )
+```
+Return the $\hat{Y}$ values for each data point:
+```{r}
+fitted.values( textlm )
+```
+Return the residuals $Y-\hat{Y}$ or $e$:
+```{r}
+residuals( textlm )
+```
+Use the `broom` library to augment the original model output to include useful features of the fit:
+```{r}
+augtextlm <- augment( textlm )
+glimpse( augtextlm )
+```
+
+```{r}
+# Mean of weights equal to mean of fitted values?
+( mean( textbooks$ucla_new ) == mean( fitted.values( textlm ) ) )
+ 
+# Mean of the residuals
+mean( residuals( textlm ) )
+
+# create textlm_tidy
+textlm_tidy <- data.frame( augment( textlm ) )
+glimpse( textlm_tidy )
+```
+
+#### Using your Linear Model
+
+Examining the Residuals:
+```{r}
+textlm_tidy %>%
+  arrange( desc( .resid ) ) %>%
+  head()
+```
+The residuals reveal how far from the model prediction a textbook price is. In other words, how overpriced is the textbook. The output above shows that the most overpriced text sells for \$197 which is \$`r 197-131` more than the Amazon cost but also \$39 more than the typical upsale price. 
+
+```{r}
+textbooks %>%
+  filter( ucla_new == 197 )
+```
+
+A quick [ibsn search](https://isbnsearch.org/isbn/9780073379661) shows this text is titled 'Financial Statement Analysis and Security Valuation'. DataCamp Prof is quick to point out the irony in this.
+
+Were there any underpriced books?
+```{r}
+textlm_tidy %>%
+  arrange( .resid ) %>%
+  head()
+```
+Yes, there were quite a few underpriced books. It would be interesting to pursue this dataset further to understand what features correspond to under/over pricing.  
+
+```{r}
+textbooks %>%
+  filter( ucla_new == 146.75 )
+```
+
+The most underpriced is a [Studyguide to the Principles of Accounting](https://isbnsearch.org/isbn/9780077251031).
+
+#### Making Predictions
+`predict( lm, newdata )` yields fitted values for any new data
+
+```{r}
+new_df <- data.frame( amaz_new = 8.49 )
+predict( textlm, newdata = new_df )
+```
+
+Visualizing New Observations. Use `broom::augment` to get predictions in a data.frame with other relevant model features
+
+```{r}
+isrs <- broom::augment( textlm, newdata =new_df )
+ggplot( data = textbooks, aes( x = amaz_new, y = ucla_new ) ) +
+  geom_point() +
+  geom_smooth( method = 'lm' ) +
+  geom_point( data = isrs, aes( y = .fitted ), size = 3, color = 'magenta' )
+```
+
+```{r}
+mod <- lm( wgt ~ hgt,  data =  bdims)
+coefs <- data.frame( Intercept = coef( mod )[1], slope = coef( mod )[2] )
+glimpse( coefs )
+# Scatterplot with regression line
+ggplot(data = bdims, aes(x = hgt, y = wgt)) + 
+  geom_point() + 
+  geom_abline(data = coefs,
+              aes( intercept = Intercept,
+                   slope = slope ),
+              color = 'dodgerblue' )
+```
 
 ### Model fit
+
+#### Assessing Model Fit
+How well do models work?  
+How to quantify the quality of a model fit?  
+
+* Sum of Squares Deviations. However, this has a way of penelizing large deviation disproportionately.
+
+```{r}
+#Two ways to compute SSE
+mod_possum <- lm( total_l ~ tail_l, data = possum )
+mod_possum %>%
+  augment() %>%
+  dplyr::summarize( SSE = sum( .resid^2 ),
+             SSE_also = ( n() - 1 ) * var( .resid ) )
+```
+The SSE is a single number that captures how much our model missed the real data by. However, it is difficult to interpret because the units are squared. Therefore it is common to work with the RMSE.  
+
+**RMSE**: Root Mean Square Error or The Residual Standard Error  
+$$RMSE = \sqrt{\frac{\sum_i e_i^2}{d.f}} = \sqrt{\frac{SSE}{n-2}}$$
+```{r}
+summary( mod_possum )
+```
+
+**RMSE is conveniently in the same units as the target variable**
+Here, RMSE = 3.572 on 102 degrees of freedom. This means that our model makes a prediction on body length that is typically within 3.572 cm of the truth. 
+
+```{r}
+summary( textlm )
+```
+
+For the textbook model, the RMSE = 10.47. So our text price prediction is typically withing \$10.47 USD of the truth.
+
+```{r}
+# Compute the mean of the residuals
+mean( residuals( textlm ) )
+
+# Compute RMSE
+sqrt(sum(residuals( textlm )^2) / df.residual( textlm ))
+```
+
+#### Comparing Model Fits
+a unitless measure of model fit that can be used to compare between different modeling approaches
+
+**The Null (averagle) Model**  
+
+* for all observations, $\hat{y} = \bar{y}$
+* find the SSE for the null model:
+```{r}
+null_possum <- lm( total_l ~ 1, data = possum )
+null_possum %>%
+  augment( possum ) %>%
+  dplyr::summarize( SSE = sum( .resid^2 ) )
+```
+* find the SSE for our linear model
+```{r}
+mod_possum %>%
+  augment( possum ) %>%
+  dplyr::summarize( SSE = sum( .resid^2 ) )
+```
+* the ration of the the SSEs quatifies the variance accounted for by the linear model
+
+**Coefficient of Determination**
+$$R^2 = 1 - \frac{SSE}{SST} = 1 - \frac{Var(e)}{Var(y)}$$
+SST is the SSE for the Null Model
+$\therefore$ we interpret $R^2$ as the proportion of variance of the response variable that is explained by the model.  
+
+**Connection to Correlation**: For simple linear regression with just 1 explanatory variable, the value of $R^2$ corresponds to to square of the correlation coeficient. Or:
+$$r_{x,y}^2 = R^2$$
+However, this is not the case with more complex models  
+
+$R^2$ is very commonly used to evaluate model fit. However, it should not be the be-all & end-all measure. A very high $R^2$ could happen when the model is overfitting results. A low $R^2$ does not mean that the model can't yield statistically powerful insights about a dataset.
+
+```{r}
+# View model summary
+summary( mod )
+# Compute R-squared
+bdims_tidy <- augment( mod )
+bdims_tidy %>%
+  dplyr::summarize(var_y = var( wgt ), var_e = var( .resid ) ) %>%
+  mutate(R_squared = 1 - var_e / var_y )
+```
+
+#### Unusual Points
+Leverage & Influence
+
+```{r}
+regulars <- mlbbat10 %>%
+  filter( at_bat > 400 )
+ggplot( regulars, aes( x = stolen_base, y = home_run )) +
+  geom_jitter( alpha = 0.5 ) +
+  geom_smooth( method = 'lm' )
+```
+How individual points, especially if they are extreme, can change the fit of a linear model.
+
+**Leverage** is a function of the distance between the value of the explanatary variable and the mean of the explanatary variable. Points that are far from the horizontal center of the data distribution have high leverage while close points have low leverage.
+$$h_i = \frac{1}{n} + \frac{(x_i- \bar{x})^2}{\sum_{i=1}^n (x-1 - \bar{x})^2}$$
+To see the points with the highest leverage, sort by the`.hat` feature
+```{r}
+modmlb <- lm( home_run ~ stolen_base, data = regulars )
+modmlb %>%
+  augment() %>%
+  arrange( desc( .hat ) ) %>%
+  dplyr::select( home_run, stolen_base, .fitted, .resid, .hat )
+```
+
+**Influnece**: determines by both `.hat` and `.resid`. See `.cooksd`
+```{r}
+modmlb %>%
+  augment() %>%
+  arrange( desc( .cooksd ) ) %>%
+  dplyr::select( home_run, stolen_base, .fitted, .resid, .hat, .cooksd ) %>%
+  head()
+```
+
+
+#### Dealing with Outliers
+
+Removing outliers: **What is the justification?** If the answer is, because it improves my result, then this is not justification. **How does this change the scope of inference?** by removing an outlier are you selectively dismissing a group/demographic?
+
 
 
 <br><br><br>
