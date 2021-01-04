@@ -1,0 +1,710 @@
+---
+title: 'Multiple Logistic Regression in`R`'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+library( openintro )
+library( tidyverse )
+library( modelr )
+library( UsingR )
+library( broom )
+library( plotly )
+library( Stat2Data )
+```
+
+### Parallel Slopes
+
+#### What if you have two groups?
+
+```{r}
+#glimpse( mpg )
+n <- nrow(mpg)
+mpg_manual <- subset(mpg, substring(trans[1:n],1,1)=="m")
+glimpse( mpg_manual )
+```
+```{r}
+ggplot( data = mpg_manual, aes( x = displ, y = hwy ) ) +
+  geom_point()
+```
+The data above are from two different years
+```{r}
+unique( mpg_manual$year )
+```
+Did the mileage change between these two years?
+```{r}
+#a look at fuel efficiency
+ggplot( data = mpg_manual, aes( x = factor( year ), y = hwy ) ) +
+  geom_boxplot()
+```
+We want to assess the effects of engine size and year simultaneously.  
+
+**Parallel Lines Model**: used when one of the explanatory variables is categoric and the other is numeric.
+
+```{r}
+mod <- lm( hwy ~ displ + factor( year ), data = mpg )
+summary( mod )
+```
+
+```{r}
+glimpse( mariokart )
+```
+
+```{r}
+# fit parallel slopes
+lm( total_pr ~ wheels + cond, data = mariokart )
+```
+
+
+#### Visualizing Parallel Slopes Models
+```{r}
+ggplot( data = mpg_manual, aes( x = displ, y = hwy, color = factor( year ) ) ) +
+  geom_point()
+```
+
+Setting up our Model  
+
+* Define  
+
+$$newer =  \left\{ \begin{array}{rcl} 
+1 & \mbox{if } year = 2008 \\ 
+0 & \mbox{if } year = 1999 
+\end{array}\right. $$
+
+* Our model is:  
+
+$$\hat{hwy} = \hat{\beta_0} + \hat{\beta}_1 \cdot displ + \hat{\beta}_2 \cdot newer$$
+
+Use `R`'s `lm()` to fint the coefficients
+```{r}
+mod
+```
+
+From this, we can find define the parallel line fits for this model:  
+For `year = 2008`, we have:  
+$$\hat{hwy} = 35.276 - 3.611 \cdot displ + 1.402 \cdot (1) = $$
+$$= (35.276 + 1.402) - 3.611 \cdot displ$$
+
+For `year = 1999`, we have:
+$$\hat{hwy} = 35.276 - 3.611 \cdot displ + 1.402 \cdot (0) = $$
+$$= 35.276 - 3.611 \cdot displ$$
+
+Visualizing the parallel lines:
+```{r}
+#glimpse( augment( mod ) )
+ggplot( data = mpg_manual, aes( x = displ, y = hwy, color = factor( year ) ) ) +
+  geom_point() +
+  geom_line( data = augment( mod ), aes( y = .fitted, color = `factor(year)` ) )
+```
+
+```{r}
+# Augment the model
+mariokart_filt <- mariokart %>%
+  filter(total_pr < 100)
+mod2 <- lm( total_pr ~ wheels + cond, data = mariokart_filt )
+augmented_mod <- augment( mod2 )
+#glimpse(augmented_mod)
+
+# scatterplot, with color
+data_space <- ggplot(data = augmented_mod, aes(x = wheels, y = total_pr, color = cond)) + 
+  geom_point()
+  
+# single call to geom_line()
+data_space + 
+  geom_line(aes(y = .fitted, color = 'cond'))
+```
+
+
+#### Interpreting parallel slopes coefficients
+
+Common misunderstandings for interpretting parallel slopes models:  
+
+* There is only *one* slope. Yes there are 2 lines, however only the numeric feature is associated with a slope.
+* What is the reference level of the categorical feature?
+* What are the units?
+* After controlling for ....coefficients need to be interpretted n the context of the other explanatory variables in the model.
+
+
+#### Three ways to describe a model
+
+**Mathematical Description**
+$$\mbox{Equation: }y = \beta_0 + \beta_1x_1 + \beta_2x_2 + \epsilon$$
+$$\mbox{Residuals: } \epsilon \sim N(0,\sigma_{\epsilon})$$
+$$\mbox{Coefficients: } \beta_0, \beta_1, \beta_2$$
+
+**Geometric Description**
+Visualizing graphically
+
+**Syntactic**
+Using `R`
+
+Multiple Regression:  
+
+* $y = \beta_0 + \beta_1x_1 + \beta_2x_2 + \cdots + \beta_px_p + \epsilon$
+* `y ~ x1 + x2 + ... + xp
+* one best fit line becomes multiple lines or a plane or even multiple planes.
+
+```{r}
+glimpse( babies )
+# build model
+mod3 <- lm( data = babies, wt ~ age + factor( smoke ) )
+mod3
+```
+
+### Evaluating and Extending Parallel Slopes Model
+
+#### Model fit, residuals, and prediction
+If the model fits the data better, the residuals are smaller, the SSE is smaller and the $R^2$ is larger.  
+Models that incorporate more features automatically have a larger $R^2$ value that simple univariate regression models. Therefore, to make appropriate comparasons of model performance, the adjusted $R^2$ value is preferred:
+$$R^2_{adj} = 1 - \frac{SSE}{SST} \cdot \frac{n-1}{n-p-1}$$
+$R^2_{adj}$ applies a penalty $p$ for each additional feature added to the model  
+
+```{r}
+#return just the predicted values:
+predict( mod )
+#return a dataframe with the fitted values, data and other metrics
+augment( mod )
+
+#some new data
+new_obs <- data.frame( displ = 1.8, year = 2008 )
+#return a prediction for this new data
+predict( mod, newdata = new_obs )
+#return a data.frame
+augment( mod, newdata =  new_obs )
+```
+
+```{r}
+glimpse( mariokart )
+mod_mk1 <- lm( data = mariokart, total_pr ~ wheels + cond )
+# R^2 and adjusted R^2
+summary( mod_mk1 )
+
+# add random noise
+mario_kart_noisy <- mariokart %>% mutate( noise = rnorm( n() ) )
+  
+# compute new model
+mod_mk2 <- lm( data = mario_kart_noisy, total_pr ~ wheels + cond + noise )
+
+# new R^2 and adjusted R^2
+summary( mod_mk2 )
+```
+
+#### Understanding interaction
+Interaction terms. allow for changes in the relationships of explanatory variables.  
+ex:  
+$$\hat{mpg} = \hat{\beta_0} + \hat{\beta_1} \cdot displ + \hat{\beta_2}\cdot is\_newer + \hat{\beta_3} \cdot displ \cdot is\_newer$$
+This results in two best fit lines:  
+
+* For older cars: $\hat{mpg} = \hat{\beta_0} + \hat{\beta_0} \cdot displ$
+* For newer cars: $\hat{mpg} = (\hat{\beta_0} + \hat{\beta_2}) + (\hat{\beta_1} + \hat{\beta_3})\cdot displ$
+
+Syntax for Interactions:
+```{r}
+# include interaction
+# : means multiplication here
+lm( total_pr ~ cond + duration + cond:duration, data = mariokart_filt )
+
+# interaction plot
+ggplot(data = mariokart_filt, aes(x = duration, y = total_pr, color = cond)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE )
+```
+
+
+#### Simpson's Paradox
+
+```{r}
+glimpse( SAT )
+```
+```{r}
+ggplot( data = SAT, aes( x = salary, y = total ) ) +
+  geom_point() +
+  geom_smooth( method = 'lm', se = 0 )
+```
+Revisualize the data using a paralel slopes model to evaluate the effect of percentage of students taking the SAT:
+```{r}
+SAT_wbin <- SAT %>%
+  mutate( sat_bin = cut( perc, 3 ) )
+
+mod_satbin <- lm( formula = total ~ salary + sat_bin, data = SAT_wbin )
+mod_satbin
+```
+```{r}
+glimpse( SAT_wbin )
+ggplot( data = SAT_wbin, aes( x = salary, y = total, color = sat_bin ) ) +
+  geom_point() +
+  geom_line( data = broom::augment( mod_satbin ), aes( y = .fitted ) )
+```
+Ignoring SAT percentage, thre was a *negative* trend for SAT score to decrease as a function of salary. However, if the percentage of SAT is discretized, we see that all groups show a *positive* trend as a function of salary. This is an example of **Simpson's effect**: an effect that occurs when the marginal association between two categorical variables is qualitatively different from the partial association between the same two variables after controlling for one or more other variables.  
+
+When Simpson's phenomenon is present, the relationship between variables changes when subgroups are considers. When this paradox is present, the relationship is an important effect to include in a model.
+
+```{r}
+slr <- ggplot(mariokart_filt, aes(y = total_pr, x = duration)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE)
+
+# model with one slope
+lm( data = mariokart_filt, total_pr ~ duration )
+
+
+# plot with two slopes
+slr2 <- slr + aes(color = cond )
+
+grid.arrange( slr, slr2, ncol = 2 )
+```
+
+
+### Multiple Regression
+
+#### Adding a Numerical Explanatory Variable
+
+* Mathematical: $\hat{bwt} = \hat{\beta_0} + \hat{\beta_1} \cdot gestation + \hat{\beta_2} \cdot age$
+
+* Syntactical:  `lm( bwt ~ gestation + age, data = babies )`
+* Geometric:
+```{r}
+#glimpse( babies )
+babies_filt <- babies %>%
+  filter( age < 50 & gestation < 500 )
+data_space <- ggplot( babies_filt, aes( x = gestation, y = age ) ) +
+  geom_point( aes( color = wt ) )
+data_space
+```
+
+Tiling the Plane
+```{r}
+grid <- babies_filt %>%
+  data_grid(
+    gestation = seq_range( gestation, by = 1 ),
+    age = seq_range( age, by = 1 )
+  )
+mod_tiling <- lm( wt ~ gestation + age, data = babies )
+bwt_hats <- augment( mod_tiling, newdata = grid )
+#glimpse( bwt_hats )
+data_space + geom_tile( data = bwt_hats, aes( fill = .fitted, alpha = 0.5 ) ) +
+  scale_fill_continuous( 'wt', limits = range( babies_filt$wt ))
+```
+
+
+#### Adding a Third (categorical) variable
+```{r}
+glimpse( babies_filt )
+mod_bab3 <- lm( wt ~ gestation + age + smoke, data = babies_filt )
+mod_bab3
+```
+
+Geometry:  
+
+* numeric + categorical: parallel lines
+* numeric + numeric: a plane
+* numeric + numeric + categorical: parallel planes
+
+use plotly for parallel planes visualization
+```{r eval = FALSE, echo = FALSE}
+#try to get this working
+# draw the 3D scatterplot
+p <- plot_ly(data = mariokart, z = ~totalPr, x = ~duration, y = ~startPr, opacity = 0.6) %>%
+  add_markers(color = ~cond) 
+  
+# draw two planes
+p %>%
+  add_surface(x = ~x, y = ~y, z = ~plane0, showscale = FALSE) %>%
+  add_surface(x = ~x, y = ~y, z = ~plane1, showscale = FALSE)
+```
+
+
+#### Higher Dimensions
+Kitchen sink model: throw everything in and see what happens
+
+### Logistic Regression
+
+#### What is Logistic Regression?
+Linear Regression with a categorical response variable.
+
+```{r}
+glimpse( heart_transplant )
+```
+```{r}
+ggplot( data = heart_transplant, aes( x = age, y = survived ) ) +
+  geom_jitter( width = 0, height = 0.05, alpha = 0.5 )
+```
+We have to transform the `survived` feature to a binary variable
+```{r}
+heartTr <- heart_transplant %>%
+  mutate( is_alive = ifelse( survived == 'alive', 1 ,0 ) )
+```
+Now, visualize the binary response
+```{r}
+data_space_hearTr <- ggplot( data = heartTr, aes( x = age, y = is_alive ) ) +
+  geom_jitter( width = 0, height = 0.05, alpha = 0.5 )
+data_space_hearTr
+```
+Just fitting a linear regression line here is inappropriate and will not capture the trands in the data here.
+
+**Generalized Linear Models**:  
+
+* Generalization of multiple regression.
+  + modelnon-normal response distributions
+* GLM special case: logistic regression
+  + model a binary response variable
+  + uses *logit* link function
+* GLM in a nutshell: apply a link function to appropriately scale the response variable to match the output of a linear model. The link function used in logistic regression is the logit function.  
+
+Fitting a GLM:
+```{r}
+glm( is_alive ~ age, data = heartTr, family = binomial )
+binomial()
+```
+
+```{r}
+
+data("MedGPA")
+head( MedGPA )
+```
+Example categorical response variable plotted with a simple linear regression line:
+```{r}
+# scatterplot with jitter
+data_space <- ggplot( data = MedGPA, aes( x = GPA, y = Acceptance ) ) + 
+  geom_jitter(width = 0, height = 0.05, alpha = 0.5)
+
+# linear regression line
+data_space + 
+  geom_smooth( method = 'lm', se = FALSE )
+```
+For predictions close to the median, a linear regression model might seem appropriate:
+```{r}
+# filter
+MedGPA_middle <- MedGPA %>%
+filter( GPA > 3.375 & GPA <= 3.77 )
+
+# scatterplot with jitter
+data_space2 <- ggplot(data = MedGPA_middle, aes( x = GPA, y = Acceptance )) + 
+  geom_jitter(width = 0, height = 0.05, alpha = 0.5)
+
+# linear regression line
+data_space2 + 
+  geom_smooth( method = 'lm', se = FALSE )
+```
+
+However, linear regression does not make good predictions for the extreem ends of the data distribution (very high or very low GPA scores )  
+
+Fit a GLM model
+```{r}
+# fit model
+glm(Acceptance ~ GPA, data = MedGPA, family = binomial)
+```
+
+
+#### Visualizing Logistic Regression
+```{r}
+data_space
+```
+
+```{r}
+data_space +
+  geom_smooth( method = 'lm', se = FALSE ) +
+  geom_smooth( method = 'glm', se = FALSE, color = 'red',
+               method.args = list( family = 'binomial' ) )
+```
+
+```{r}
+data_space_hearTr +
+  geom_smooth( method = 'lm', se = FALSE ) +
+  geom_smooth( method = 'glm', se = FALSE, color = 'red',
+               method.args = list( family = 'binomial' ) )
+```
+The sigmoidal shaped logistic curve will never reach the values of 1 or 0 which illiminates the problematic prediction values from the lm model.
+
+```{r}
+MedGPA_binned <- MedGPA %>%
+  mutate( bin = cut( GPA, 6 ) ) %>%
+  group_by( bin ) %>%
+  summarise( mean_GPA = mean( GPA ),
+             acceptance_rate = sum(Acceptance)/n())
+glimpse( MedGPA_binned )
+```
+
+```{r}
+glmmod <- glm(formula = Acceptance ~ GPA, family = binomial, data = MedGPA)
+
+# binned points and line
+data_space <- ggplot( data = MedGPA_binned, aes( x = mean_GPA, y = acceptance_rate ) ) +
+geom_line()
+#data_space
+
+# augmented model
+MedGPA_plus <- augment( glmmod, type.predict = 'response' )
+#glimpse( MedGPA_plus )
+# logistic model on probability scale
+data_space +
+  geom_line(data = MedGPA_plus, aes( x = GPA, y = .fitted), color = "red")
+```
+
+Observe that the logistic predictions follow the binned values very well
+
+#### Three scales approach to interpretation
+
+```{r}
+hTrmod <- glm( is_alive ~ age, data = heartTr, family = binomial )
+heartTr_plus <- hTrmod %>%
+  augment( type.predict = 'response' ) %>%
+  mutate( y_hat = .fitted )
+```
+Probability scale plot
+```{r}
+ggplot( heartTr_plus, aes( x = age, y = y_hat ) ) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous( 'Probability of Being Alive', limits = c( 0,1 ) )
+```
+The logistic line is curved, therefore we can no longer say that each additional year in age is associated with a set change (slope) of P(alive) as if this were a linear model.  
+
+To combat this, we can change the scale of the y-axis.  
+**Odds scale**
+$$odds(y) = \frac{\hat{y}}{1-\hat{y}} = \mbox{exp}(\hat{\beta_0} + \hat{\beta_1} \cdot x)$$
+```{r}
+#glimpse( heartTr_plus )
+heartTr_plus <- heartTr_plus %>%
+  mutate( odds_hat = y_hat / (1 - y_hat ) )
+
+ggplot( heartTr_plus, aes( x = age, y = odds_hat ) ) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous( 'Odds of Being Alive', limits = c( 0,1 ) )
+```
+The model now has the form of an exponential function   
+
+**Log-odds scale**:  
+$$logit( \hat{y]}) = log  \left[ \frac{\hat{y}}{1-\hat{y}} \right] = \hat{\beta_0} + \hat{\beta_1} \cdot x$$
+```{r}
+heartTr_plus <- heartTr_plus %>%
+  mutate( log_odds_hat = log( odds_hat ) )
+
+ggplot( heartTr_plus, aes( x = age, y = log_odds_hat ) ) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous( 'Odds of Being Alive', limits = c( 0,0.5 ) ) +
+  scale_x_continuous( limits = c( 0,70 ) )
+```
+
+Caparison of the 3 scales:  
+
+1. Probability Scale
+  + scale: intuitive, easy to read
+  + function: non-linear and hard to interpret
+2. Odds Scale
+  + scale: harder to interpret
+  + function: exponention; hard to interpret
+3. Log-Odds Scale
+  + scale: impossible to interpret
+  + function: linear; easy to interpret
+
+Odds ratios
+```{r}
+exp( coef(mod) )
+```
+
+```{r}
+# compute odds for bins
+MedGPA_binned <- MedGPA_binned %>%
+mutate( odds = acceptance_rate/(1-acceptance_rate))
+
+# plot binned odds
+data_space <- ggplot( MedGPA_binned, aes( x = mean_GPA, y = odds ) ) +
+geom_point() +
+geom_line()
+
+
+# compute odds for observations
+MedGPA_plus <- MedGPA_plus %>%
+mutate( odds_hat = .fitted/(1-.fitted))
+
+# logistic model on odds scale
+data_space +
+  geom_line(data = MedGPA_plus, aes( x = GPA, y = odds_hat ), color = "red")
+```
+
+Log_odds scale
+```{r}
+# compute log odds for bins
+MedGPA_binned <- MedGPA_binned %>%
+mutate( log_odds = log( acceptance_rate/( 1-acceptance_rate ) ) )
+
+# plot binned log odds
+data_space <- ggplot( MedGPA_binned, aes( x = mean_GPA, y = log_odds ) ) +
+geom_point() +
+geom_line()
+
+
+# compute log odds for observations
+MedGPA_plus <- MedGPA_plus %>%
+mutate( log_odds_hat = log( .fitted/( 1-.fitted ) ) )
+
+# logistic model on log odds scale
+data_space +
+  geom_line(data = MedGPA_plus, aes( x = GPA, y = log_odds_hat), color = "red")
+```
+
+#### Using a Logistic Model
+Learning from the coefficients about the underlying processes
+```{r}
+#fitted probabilities on the log-odds scale (not very useful):
+augment( hTrmod )  
+
+#return on probability scale (more familiar)
+augment( hTrmod, type.predict = 'response' )
+```
+
+Out-of-Sample predictions
+```{r}
+cheney <- data.frame( age = 71, transplant = 'treatment' )
+augment( hTrmod, newdata = cheney, type.predict = 'response' )
+```
+
+Making Binary Predictions  
+e.g. for the heart transplant data, a person either lives or dies. does it make sense to predict a probability? 
+```{r}
+hTrmod_plus <- augment( hTrmod, type.predict = 'response' ) %>%
+  mutate( alive_hat = round( .fitted ) )
+#glimpse( hTrmod_plus)
+hTrmod_plus %>%
+  select( is_alive, age, .fitted, alive_hat )
+```
+A look at the confusion matrix for a simple rounding scheme:
+```{r}
+hTrmod_plus %>%
+  select( is_alive, alive_hat ) %>%
+  table()
+```
+
+Back the MedGPA data 
+```{r}
+# create new data frame
+new_data <- data.frame( 'GPA' = 3.51 )
+
+# make predictions
+augment( glmmod, newdata = new_data, type.predict = 'response' )
+```
+```{r}
+# data frame with binary predictions
+tidy_mod <- glmmod %>%
+augment( type.predict = 'response' ) %>%
+mutate( Acceptance_hat = round( .fitted ) )
+  
+# confusion matrix
+tidy_mod %>%
+  select(Acceptance, Acceptance_hat) %>% 
+  table()
+```
+
+
+### Case Study: Italian Retaurants in NYC
+
+#### Italian Restaurants in NYC
+What are the factors that contribute to the price of a meal at an Italian Restaurant in NYC?
+
+```{r}
+#Zagat reviews data
+nyc_url <- 'https://assets.datacamp.com/production/repositories/845/datasets/639a7a3f9020edb51bcbc4bfdb7b71cbd8b9a70e/nyc.csv'
+nyc <- read.csv( nyc_url )
+glimpse( nyc )
+```
+
+**EDA**  
+How are the variables distributed?
+```{r}
+nyc %>% select( -Restaurant ) %>% pairs()
+```
+
+```{r}
+# Price by Food plot
+ggplot( data = nyc, aes( x = Food, y = Price ) ) +
+geom_point()
+
+
+# Price by Food model
+lm( Price ~ Food, data = nyc )
+```
+
+#### Incorporating another variable
+How does location to the East or West of 5th Avenue affect the price of an Italian meal?
+```{r}
+nyc %>% group_by( East ) %>%
+  dplyr::summarize( mean_price = mean( Price ) )
+```
+But is there a confounding variable? Could the food quality have more to do with the price than location?
+How does the quality of service affect price?
+```{r}
+lm( data = nyc, Price ~ Food + East )
+```
+
+```{r eval = FALSE, echo = FALSE}
+# fit model
+lm( data = nyc, Price ~ Food + Service )
+
+# draw 3D scatterplot
+p <- plot_ly(data = nyc, z = ~Price, x = ~Food, y = ~Service, opacity = 0.6) %>%
+  add_markers() 
+p
+
+# draw a plane
+#p %>%
+#  add_surface(x = ~x, y = ~y, z = ~plane, showscale = FALSE) 
+```
+
+
+#### Higher Dimentions
+How is the percieved quality of the food vary with the price of a meal? How is this effect moderated by the quality of food and/or service?
+
+**Collinear** variables: if one variable is varies constantly with another variable. Having colinear variables in a model detracts from the power of the model by adding redundant information.
+
+An example of perfect collinearity:
+```{r}
+#Comparing the price of a model in dollars to the price in cents
+nyc %>%
+  mutate( Price_cents = Price / 100 ) %>%
+  dplyr::summarise( cor_collinear = cor( Price, Price_cents ) )
+```
+
+**Multicollinearity**  
+
+* Explanatory variables can get highly correlated. especially as more and more features are added to a model
+* leads to unstable coefficient estimates
+* However, does not detract the $R^2$, or the explanatory power of the model as a whole 
+
+
+```{r}
+# Price by Food and Service and East
+lm( data = nyc, Price ~ Food + Service + East )
+```
+
+```{r eval = FALSE, echo = FALSE}
+# draw 3D scatterplot
+p <- plot_ly(data = nyc, z = ~Price, x = ~Food, y = ~Service, opacity = 0.6) %>%
+  add_markers(color = ~factor(East)) 
+
+# draw two planes
+p %>%
+  add_surface(x = ~x, y = ~y, z = ~plane0, showscale = FALSE) %>%
+  add_surface(x = ~x, y = ~y, z = ~plane1, showscale = FALSE)
+```
+Higher dimensions
+```{r}
+hdimmod <- lm( data = nyc, Price ~ Food + Decor + Service + East )
+summary( hdimmod )
+```
+
+<br><br><br>
