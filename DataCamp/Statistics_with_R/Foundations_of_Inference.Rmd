@@ -1,0 +1,499 @@
+---
+title: 'Foundations of Inference'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+library( infer )
+library( NHANES )
+```
+
+### Introduction to Ideas of Inference
+Making inferential claims (as opposed to descriptive) about the data  
+**Statistical Inference**: The process of making claims about a population based on information from a sample.
+
+**Vocabulary**:  
+
+* **Null Hypothesis ($H_0$)**: the claim that is not interesting. e.g. there is no statistical difference between two sample groups
+* **Alternative Hypothesis ($H_A$)**: the claim corresponding to the research hypothesis
+* **Goal**: prove that the alternative hypothesis is true and the null is false.
+* **Example 1**: Comparing the speed of two different subspecies of cheetah
+  + $H_0$: Asian and African cheetahs run at the same average speed
+  + $H_A$: there is a statistically significant difference between the average running pace of Asian and African cheetahs
+* **Example 2**: From a sample, researchers would like to claim that Candidate X will win an election
+  + $H_0$: Candidate X will get half the votes
+  + $H_A$: Candidate X will get more than half the votes
+  
+#### Randomized Distributions
+
+Understanding the Null Distribution  
+Generating a distribution of the statistic from the null population gives information about whether the observed data are inconsistent with the null hypothesis.  
+
+```{r eval = FALSE, echo = FALSE}
+soda %>%
+  group_by( location ) %>%
+  summarize( prop_cola = mean( drink == 'cola' ) ) %>%
+  summarize( diff( prop_cola ) )
+
+soda %>%
+  specify( drink ~ location, success = 'cola' ) %>%
+  hypothesize( null = 'independence' ) %>%
+  generate( reps = 1, type = 'permute' ) %>%
+  calculate( stat = 'diff in props',
+             order = c( 'west', 'east' ) )
+```
+Repeat the sampling several times:
+```{r eval = FALSE, echo = FALSE}
+soda %>%
+  specify( drink ~ location, success = 'cola' ) %>%
+  hypothesize( null = 'independence' ) %>%
+  generate( reps = 5, type = 'permute' ) %>%
+  calculate( stat = 'diff in props',
+             order = c( 'west', 'east' ) )
+```
+Repeat the sampling and calculations enough times to generate a distribution:
+```{r eval = FALSE, echo = FALSE}
+soda %>%
+  specify( drink ~ location, success = 'cola' ) %>%
+  hypothesize( null = 'independence' ) %>%
+  generate( reps = 100, type = 'permute' ) %>%
+  calculate( stat = 'diff in props',
+             order = c( 'west', 'east' ) )
+```
+
+```{r}
+colnames( NHANES )
+```
+```{r}
+# Create bar plot for Home Ownership by Gender
+ggplot(NHANES, aes(x = Gender, fill = HomeOwn)) + 
+  # Set the position to fill
+  geom_bar(position = 'fill') +
+  ylab("Relative frequencies")
+```
+```{r}
+# Density plot of SleepHrsNight colored by SleepTrouble
+ggplot(NHANES, aes(x = SleepHrsNight, color = SleepTrouble)) + 
+  # Adjust by 2
+  geom_density(adjust = 2) + 
+  # Facet by HealthGen
+  facet_wrap(~ HealthGen)
+```
+
+Investigate the relationship between gender and home ownership
+
+Calculate the original observed statistic
+```{r}
+homes <- NHANES %>%
+  # Select Gender and HomeOwn
+  select(Gender, HomeOwn) %>%
+  # Filter for HomeOwn equal to "Own" or "Rent"
+  filter(HomeOwn %in% c("Own", "Rent"))
+
+glimpse( homes )
+```
+Find the observed differences in proportions of home ownerships between the genders
+```{r message = FALSE}
+diff_orig <- homes %>%   
+  # Group by gender
+  group_by(Gender) %>%
+  # Summarize proportion of homeowners
+  summarize(prop_own = mean( HomeOwn == 'Own')) %>%
+  # Summarize difference in proportion of homeowners
+  summarize(obs_diff_prop = diff(prop_own)) # male - female
+  
+# See the result
+diff_orig
+```
+Randomize the data under the null model of independence
+```{r}
+# Specify variables
+homeown_perm <- homes %>%
+  specify(HomeOwn ~ Gender, success = "Own") %>%
+  hypothesize(null = "independence")  %>% 
+  generate(reps = 100, type = "permute") %>% 
+  calculate(stat = 'diff in props', order = c( 'male','female' ))
+
+# Print results to console
+homeown_perm
+
+# Dotplot of 100 permuted differences in proportions
+ggplot(homeown_perm, aes(x = stat)) + 
+  geom_dotplot(binwidth = 0.001)
+```
+Try permuting 1000x and visualize the distribution as a density plot:
+```{r}
+# Perform 1000 permutations
+homeown_perm <- homes %>%
+  # Specify HomeOwn vs. Gender, with `"Own" as success
+  specify(HomeOwn ~ Gender, success = "Own") %>%
+  # Use a null hypothesis of independence
+  hypothesize(null = 'independence') %>% 
+  # Generate 1000 repetitions (by permutation)
+  generate(reps = 1000, type = "permute") %>% 
+  # Calculate the difference in proportions (male then female)
+  calculate(stat = 'diff in props', order = c('male','female'))
+
+# Density plot of 1000 permuted differences in proportions
+ggplot(homeown_perm, aes(x = stat)) + 
+  geom_density()
+```
+The distribution is approximately normally distributed around ~-0.01, but what can we conclude from this finding?....
+
+**Four Steps of Inference**:  
+
+1. `specify`: will specify the response and explanatory variables
+2. `hypothesize`: will declare the null hypothesis
+3. `generate`: will generate resamples, permutations, or simulations
+4. `calculate`: will calculate summary statistics
+
+#### Using the Randomization Distribution
+Comparing the observed statistic against a distribution of the null hypothesis.
+Quantify how different the observed is...
+
+```{r message = FALSE}
+soda %>%
+  group_by( location ) %>%
+  summarize( prop_cola = mean( drink == 'cola' ) ) %>%
+  summarize( diff( prop_cola ) ) %>%
+  pull()
+
+soda %>%
+  specify( drink ~ location, success = 'cola' ) %>%
+  hypothesize( null = 'independence' ) %>%
+  generate( reps = 100, type = 'permute' ) %>%
+  calculate( stat = 'diff in props',
+             order = c( 'west', 'east' ) )
+
+#how many permutation stats are greater than or equal to the observed stat
+soda_perm %>%
+  summarize( proportion = mean( diff_orig >= stat )) 
+```
+
+```{r}
+glimpse( homeown_perm )
+# Plot permuted differences, diff_perm
+ggplot(homeown_perm, aes(x = stat)) + 
+  # Add a density layer
+  geom_density() +
+  # Add a vline layer with intercept diff_orig
+  geom_vline(aes(xintercept = diff_orig$obs_diff_prop), color = "red")
+
+# Compare permuted differences to observed difference
+homeown_perm %>%
+  mutate( diff_orig = diff_orig$obs_diff_prop ) %>%
+  summarize(n_perm_le_obs = sum(stat <= diff_orig))
+```
+Here we fail to reject the null hypothesis. There is no evidence that our data are inconsistent with the null hypothesis that there is no difference between homeownership between genders.  
+
+
+### Completing a Randomization Test: Gender Dicrimination
+Here we will complete a full hypothesis test  
+data from [Influence of sex role stereotypes on personnel decisions](http://fcrstemalgebra1.pbworks.com/w/file/fetch/82019231/1e.%20Sex%20role%20stereotypes.pdf)
+
+$H_0$: gender and promotion are unrelated variables  
+$H_A$: men are more likely to be promoted
+
+```{r}
+disc <- data.frame( promote = c( rep( 'promoted', 35 ), rep( 'not_promoted', 13 )),
+                    sex = c( rep( 'male', 21 ), rep( 'female', 14 ),
+                             rep( 'male', 3), rep( 'female', 10 )))
+disc %>%
+  group_by( sex ) %>%
+  summarize( promoted_prop = mean( promote == 'promoted' ))
+```
+Is it plausible to observe such a difference in proportions if the null hypothesis is true?
+How big of a difference does there have to be?
+
+```{r message = FALSE }
+# Create a contingency table summarizing the data
+disc %>%
+  # Count the rows by sex, promote
+  count( sex, promote)
+
+# Find proportion of each sex who were promoted
+disc %>%
+  # Group by sex
+  group_by( sex ) %>%
+  # Calculate proportion promoted summary stat
+  summarize( promoted_prop = mean( promote == 'promoted'))
+```
+The difference in prportions is ~0.3  
+
+```{r}
+# Replicate the entire data frame, permuting the promote variable
+disc_perm <- disc %>%
+  specify(promote ~ sex, success = "promoted") %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 5, type = "permute")
+
+disc_perm %>%
+  # Group by replicate
+  group_by( replicate ) %>%
+  # Count per group
+  count()
+
+disc_perm %>%
+  # Calculate difference in proportion, male then female
+  calculate( stat = 'diff in props', order = c( 'male','female'))
+```
+
+calculate the observed difference:
+```{r}
+# Calculate the observed difference in promotion rate
+diff_orig <- disc %>%
+  # Group by sex
+  group_by(sex) %>%
+  # Summarize to calculate fraction promoted
+  summarize(prop_prom = mean(promote == 'promoted')) %>%
+  # Summarize to calculate difference
+  summarize(stat = diff(prop_prom)) %>% 
+  pull()
+    
+# See the result
+diff_orig
+```
+
+
+create a randomized distribution of the null statistic
+```{r}
+# Create data frame of permuted differences in promotion rates
+disc_perm <- disc %>%
+  # Specify promote vs. sex
+  specify(promote ~ sex, success = "promoted") %>%
+  # Set null hypothesis as independence
+  hypothesize(null = "independence") %>%
+  # Generate 1000 permutations
+  generate(reps = 1000, type = "permute") %>%
+  # Calculate difference in proportions
+  calculate(stat = "diff in props", order = c("male", "female"))
+
+glimpse( disc_perm )
+```
+
+Visualize the simulation
+```{r}
+# Using permutation data, plot stat
+ggplot(disc_perm, aes(x = stat)) + 
+  # Add a histogram layer
+  geom_histogram(binwidth = 0.01) +
+  # Add a vertical line at diff_orig
+  geom_vline(aes(xintercept = diff_orig), color = "red")
+```
+
+#### Distribution of Statistics
+We are interested in whether the observed statistic is different from values obtained by shuffling. can use:  
+
+* Difference in proportions: $\hat{p}-p$
+* Ratio: $\frac{\hat{p}}{p}$
+
+Calculating quantiles  
+```{r}
+disc_perm %>%
+  summarize( q.05 = quantile( stat, p = 0.05),
+             q.95 = quantile( stat, p = 0.95))
+```
+The observed statistic is greater than the upper limit quantile supporting the idea that the observed data is not consistent with the bulk of the null distribution.
+
+#### Why 0.05?
+
+"It is a common practice to judge a result significant, if it is of such a magnitude that it would have been produced by chance not more frequently than once in twenty trials. This is **an arbitrary**, but convenient, level of significance for the practical investigator, but it does not mean that he allows himself to be deceived one in every twenty experiments. The test of significance only tells him what to ignore, namely all experiments in which significant results are not obtained. He should only claim that a phenomenon is experimentally demonstrable when he knows how to design an experiment so that it will rarely fail to give a significant result. Consequently, isolated significant results which he does not know how to reproduce are left in suspense pending further investigation." 
+
+0.05 is about the same odds as flipping 5 heads in a row with a coin.  
+
+Degree of skepticism: using a cutoff of 0.05 is more skeptical of the observed result  
+
+A cutoff level is subjective. Only significant results from well designed studies should lead to further investigation.  
+
+How does the sample size of the randomization null distribution matter:
+```{r}
+disc_small <- data.frame( promote = c( rep( 'promoted', 12 ), rep( 'not_promoted', 4 )),
+                    sex = c( rep( 'male', 7 ), rep( 'female', 5 ),
+                             rep( 'male', 1), rep( 'female', 3 )))
+
+disc_big <- data.frame( promote = c( rep( 'promoted', 350 ), rep( 'not_promoted', 130 )),
+                    sex = c( rep( 'male', 210 ), rep( 'female', 140 ),
+                             rep( 'male', 30), rep( 'female', 100 )))
+
+# Tabulate the small dataset
+disc_small %>% 
+  # Select sex and promote
+  count(sex, promote)
+
+  
+# Do the same for disc_big
+disc_big %>% 
+  # Select sex and promote
+  count(sex, promote)
+```
+```{r}
+# Create data frame of permuted differences in promotion rates
+disc_perm_small <- disc_small %>%
+  # Specify promote vs. sex
+  specify(promote ~ sex, success = "promoted") %>%
+  # Set null hypothesis as independence
+  hypothesize(null = "independence") %>%
+  # Generate 1000 permutations
+  generate(reps = 1000, type = "permute") %>%
+  # Calculate difference in proportions
+  calculate(stat = "diff in props", order = c("male", "female"))
+
+
+# Create data frame of permuted differences in promotion rates
+disc_perm_big <- disc_big %>%
+  # Specify promote vs. sex
+  specify(promote ~ sex, success = "promoted") %>%
+  # Set null hypothesis as independence
+  hypothesize(null = "independence") %>%
+  # Generate 1000 permutations
+  generate(reps = 1000, type = "permute") %>%
+  # Calculate difference in proportions
+  calculate(stat = "diff in props", order = c("male", "female"))
+
+```
+
+calculate the observed difference:
+```{r}
+# Calculate the observed difference in promotion rate
+diff_orig_small <- disc_small %>%
+  # Group by sex
+  group_by(sex) %>%
+  # Summarize to calculate fraction promoted
+  summarize(prop_prom = mean(promote == 'promoted')) %>%
+  # Summarize to calculate difference
+  summarize(stat = diff(prop_prom)) %>% 
+  pull()
+    
+diff_orig_big <- disc_big %>%
+  # Group by sex
+  group_by(sex) %>%
+  # Summarize to calculate fraction promoted
+  summarize(prop_prom = mean(promote == 'promoted')) %>%
+  # Summarize to calculate difference
+  summarize(stat = diff(prop_prom)) %>% 
+  pull()
+```
+
+visualize
+```{r}
+# Using disc_perm_small, plot stat
+sm <- ggplot(disc_perm_small, aes(x = stat)) + 
+  # Add a histogram layer with binwidth 0.01
+  geom_histogram(binwidth = 0.01) +
+  # Add a vline layer, crossing x-axis at diff_orig_small
+  geom_vline(aes(xintercept = diff_orig_small), color = "red")
+
+# Swap the dataset to disc_perm_big
+bg <- ggplot(disc_perm_big, aes(x = stat)) + 
+  geom_histogram(binwidth = 0.01) +
+  # Change the x-axis intercept to diff_orig_big
+  geom_vline(aes(xintercept = diff_orig_big), color = "red")
+
+grid.arrange( sm, bg, ncol = 2 )
+```
+
+```{r}
+calc_upper_quantiles <- function(dataset) {
+  dataset %>% 
+    summarize(
+      q.90 = quantile(stat, p = 0.90),
+      q.95 = quantile(stat, p = 0.95),
+      q.99 = quantile(stat, p = 0.99)
+    )
+}
+
+
+# Calculate the quantiles associated with the small dataset
+calc_upper_quantiles(disc_perm_small)
+
+# Calculate the quantiles associated with the big dataset
+calc_upper_quantiles(disc_perm_big)
+```
+
+#### What is a p-value?
+**p-value**: the probability of observing data as or more extreme than what we actually got given that the null hypothesis is true.
+
+Visualize and Calculate p-values:
+```{r}
+# Visualize and calculate the p-value for the small dataset
+disc_perm_small %>%
+  get_p_value(obs_stat = diff_orig_small, direction = "greater")
+
+disc_perm_small %>%
+  visualize(obs_stat = diff_orig_small, direction = "greater")
+
+# Visualize and calculate the p-value for the big dataset
+disc_perm_big %>%
+  get_p_value(obs_stat = diff_orig_big, direction = "greater")
+
+disc_perm_big %>%
+  visualize(obs_stat = diff_orig_big, direction = "greater")
+```
+The result is very consistent with the small dataset (p-value = 0.277 ) and extremely unusual for the large dataset (p-value = 0)
+
+Does the difference in promotion rates still appear to be statistically significant for this new data?
+```{r}
+disc_new <- data.frame( promote = c( rep( 'promoted', 35 ), rep( 'not_promoted', 13 )),
+                    sex = c( rep( 'male', 18 ), rep( 'female', 17 ),
+                             rep( 'male', 6), rep( 'female', 7 )))
+
+# Tabulate the new data
+disc_new %>%
+count( sex, promote )
+```
+
+```{r}
+# Create data frame of permuted differences in promotion rates
+disc_perm_new <- disc_new %>%
+  # Specify promote vs. sex
+  specify(promote ~ sex, success = "promoted") %>%
+  # Set null hypothesis as independence
+  hypothesize(null = "independence") %>%
+  # Generate 1000 permutations
+  generate(reps = 1000, type = "permute") %>%
+  # Calculate difference in proportions
+  calculate(stat = "diff in props", order = c("male", "female"))
+
+diff_orig_new <- disc_new %>%
+  # Group by sex
+  group_by(sex) %>%
+  # Summarize to calculate fraction promoted
+  summarize(prop_prom = mean(promote == 'promoted')) %>%
+  # Summarize to calculate difference
+  summarize(stat = diff(prop_prom)) %>% 
+  pull()
+
+# Plot the distribution of the new permuted differences
+ggplot(disc_perm_new, aes(x = stat)) + 
+  geom_histogram() +
+  geom_vline(aes(xintercept = diff_orig_new), color = "red")
+```
+find the p-values of the new dataset:
+```{r}
+# Find the p-value from the new data
+disc_perm_new %>%
+  summarize(p_value = mean(diff_orig_new <= stat))
+```
+
+
+### Hypothesis Testing Errors: Opportunity Cost
+
+
+
+### Confidence Intervals
+
+
+
+<br><br><br>
