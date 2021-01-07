@@ -1,0 +1,170 @@
+---
+title: 'Foundations of Probability in `R`'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+```
+
+### The Binomial Distribution
+
+#### Flipping Coins in `R`
+
+Simulating a coin flip in `R` with `rbinom( numdraws, numcoins, prob(1) )` 
+```{r}
+#the rbinom() function:
+rbinom( 1,1,.5 )
+```
+Flipping many coins:
+```{r}
+#returns a vector of flips
+rbinom( 10,1,0.5 )
+```
+```{r}
+#return the sum of heads (1) from the flips
+rbinom( 1,10,0.5 )
+```
+```{r}
+#return a vector of sums of multiple multi coin flip outcomes
+rbinom( 10,10,0.5 )
+```
+
+Unfair coin tosses:
+```{r}
+rbinom( 10,10,0.8 )
+rbinom( 10,10,0.2 )
+```
+
+Binomial Distributions
+$$X_{1 \cdots n} \sim \mbox{Binomial}(\mbox{size},p)$$
+
+```{r}
+# Generate 100 occurrences of flipping 10 coins, each with 30% probability
+manyflips <- data.frame( tenflipssum = rbinom(100000,10,0.3) )
+ggplot( manyflips, aes( x = tenflipssum ) ) +
+  geom_bar( binwidth = 1 ) +
+  scale_x_continuous( limits = c( 1,10 )) +
+  ggtitle( 'Flipping 10 coins many times' )
+```
+
+
+#### Density and Cumulatice Density
+
+What is the probability that the sum of 10 flips will be 5?
+$$P(flips=5)$$
+```{r}
+flips <- data.frame( flip10 = rbinom( 100000,10,0.3 ) )
+ggplot( flips, aes( x = flip10 ) ) +
+  geom_histogram()
+```
+There were ~25000 flips of 10 with a sum of 5. 
+$$\sim \frac{25000}{100000} = \frac{1}{4}$$
+We can easily get the exact number:
+```{r}
+mean( flips$flip10 == 5 )
+```
+
+Calculating the exact probability density:
+dbinom( outcome to find estimate at, the number of coins, the probability of heads )
+```{r}
+#probability at 5 for a fair coin
+dbinom( 5, 10, 0.5 )
+
+#probability at 6 for a fair coin
+dbinom( 6, 10, 0.5 )
+
+#probability at 10 for a fair coin
+dbinom( 10, 10, 0.5 )
+```
+
+**Cumulative Density**  
+the probability that the outcome is $\gt,\lt,\geq,\leq$ a point on the probability outcomes distribution.
+$$X \sim \mbox{Binomial}(10,.5)$$
+$$Pr(X \leq 4 )$$
+programatically calculate the simulated probability:
+```{r}
+mean( flips <= 4 )
+```
+use the function `pbinom()` to find the exactvalue
+```{r}
+pbinom( 4, 10, 0.5 )
+```
+
+```{r}
+# Calculate the probability that 2 of 10 coins are heads using dbinom
+dbinom( 2, 10, 0.3 )
+# Confirm your answer with a simulation using rbinom
+mean( rbinom( 10000, 10, 0.3 ) == 2 )
+```
+```{r}
+# Calculate the probability that at least five coins are heads
+pbinom( 5, 10, 0.3 )
+
+# Confirm your answer with a simulation of 10,000 trials
+mean( rbinom( 10000, 10, 0.3 ) >= 5 )
+```
+
+
+#### Expected Value and Variance
+
+Properties of a distribution:  
+
+* **Expected Value**: Where is the distribution centered? (mean value)
+  + $E[X] = \mbox{size}\cdot p$
+* **Variance**: How spread out is it?
+  + $\mbox{Var}(X) = \mbox{size} \cdot p \cdot (1-p)$
+
+```{r}
+#find the expected value:
+flips <- rbinom( 100000, 10, .5 )
+mean( flips )
+
+mean( rbinom( 100000, 100, 0.2 ) )
+```
+```{r}
+#calculate the variance
+var( flips )
+```
+
+```{r}
+#What is the expected value of a binomial distribution where 25 coins are flipped, each having a 30% chance of heads?
+
+# Calculate the expected value using the exact formula
+25*.3
+
+# Confirm with a simulation using rbinom
+mean(rbinom(10000,25,.3))
+
+# Calculate the variance using the exact formula
+25*.3*(1-.3)
+
+# Confirm with a simulation using rbinom
+var(rbinom(10000,25,.3))
+```
+
+
+### Laws of Probability
+
+
+
+### Bayesian Statistics
+
+
+
+### Related Distributions
+
+
+
+<br><br><br>
