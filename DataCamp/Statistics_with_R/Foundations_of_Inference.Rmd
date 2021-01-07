@@ -490,9 +490,247 @@ disc_perm_new %>%
 
 ### Hypothesis Testing Errors: Opportunity Cost
 
+#### Example: Opportunity Cost
+[Opportunity Cost Neglect](https://academic.oup.com/jcr/article-abstract/36/4/553/1787808)
 
+The Hypothesis:  
+
+* $H_0$: Reminding students will have no impact on their spending decisions
+* $H_A$: Reminding students will reduce the chance they will continue with a purchace
+
+```{r}
+opportunity <- data.frame( group = c( rep( 'control', 75 ), rep( 'treatment', 75 )),
+                    decision = c( rep( 'buyDVD', 56 ), rep( 'nobuyDVD', 19 ),
+                             rep( 'buyDVD', 41), rep( 'nobuyDVD', 34 )))
+
+# Tabulate the data
+opportunity %>%
+  count(decision, group)
+
+# Find the proportion who bought the DVD in each group
+opportunity %>%
+  group_by(group) %>%
+  summarize(buy_prop = mean(decision == 'buyDVD' ))
+```
+About 75% of the control group bought the DVD while 55% of the treament group made the purchase.  
+```{r}
+# Plot group, filled by decision
+ggplot(opportunity, aes(x = group, fill = decision)) + 
+  # Add a bar layer, with position "fill"
+  geom_bar( position = 'fill')
+```
+calculate the observed difference
+```{r}
+# Calculate the observed difference in purchase rate
+diff_obs <- opportunity %>%
+  # Group by group
+  group_by( group ) %>%
+  # Calculate proportion deciding to buy a DVD
+  summarise(prop_buy = mean(decision == 'buyDVD')) %>%
+  # Calculate difference between groups
+  summarise(stat = diff(prop_buy)) %>% 
+  pull()
+```
+
+```{r}
+# Create data frame of permuted differences in purchase rates
+opp_perm <- opportunity %>%
+  # Specify decision vs. group, where success is buying a DVD
+  specify(decision ~ group, success = 'buyDVD') %>%
+  # Set the null hypothesis to independence
+  hypothesize(null = 'independence') %>%
+  # Generate 1000 reps of type permute
+  generate(reps = 1000, type = 'permute') %>%
+  # Calculate the summary stat difference in proportions
+  calculate(stat = 'diff in props', order = c("treatment", "control"))
+```
+
+```{r}
+# Using the permuation data, plot stat
+ggplot(opp_perm, aes(x = stat)) + 
+  # Add a histogram layer with binwidth 0.005
+  geom_histogram(binwidth = 0.005) +
+  # Add a vline layer with intercept diff_obs
+  geom_vline(aes(xintercept = diff_obs), color = "red")
+```
+
+```{r}
+# Visualize the statistic 
+opp_perm %>%
+  visualize(obs_stat = diff_obs, direction = "less")
+
+# Calculate the p-value using `get_p_value`
+opp_perm %>%
+  get_p_value(obs_stat = diff_obs, direction = "less")
+
+# Calculate the p-value using `summarize`
+opp_perm %>%
+  summarize(p_value = mean( stat <= diff_obs ))
+```
+We can confidently say the different messaging caused the students to change their buying habits, since they were randomly assigned to treatment and control groups.  
+ 
+
+#### Errors and their Consequences
+
+Errors in Hypothesis Testing  
+
+* Type 1 Error: Falsely reject the null hypothesis when it was true
+* Type 2 Error: Falsely accept the null hypothesis when it was false
+
+Causal Inference:  
+
+* The study was randomized
+* Nothing systematically different about participants in the treatment or control groups
+* **Therefore**: any difference in the buying rates is due to the experimental treatment.
 
 ### Confidence Intervals
+
+#### Parameters and Condidence Intervals
+
+Confidence intervals are used when the research question seeks to arrive at an estimate.  
+A Confidence Interval is a range of numbers the (hopefully) captures the true parameter. The goal of creating a confidence interval is to calculate a range of plausible values for the paramter of interest.  
+
+#### Bootstrapping
+
+Hypothesis Testing  
+
+* How do samples from the null population vary?
+* **Statistic**: proportion of successes in sample $\longrightarrow \hat{p}$
+* **Parameter**: proportion of successes in the population $\longrightarrow p$
+
+How do $p$ and $\hat{p}$ vary?  
+**Bootstrapping** is a method that allows us to measure the distance of the statistic from the parameter. Resample from the sample the statistic was derived from.
+
+**Standard Error**describes how the statistic varies around a parameter. Bootstrapping provides an approximation of the standard error.
+
+Variability of $\hat{p}$ from the sample (bootstrapping)
+```{r}
+all_polls <- readRDS( 'all_polls.rds' )
+#glimpse( all_polls )
+
+ex1_props <- all_polls %>%
+  group_by( poll ) %>%
+  summarize( stat = mean( vote == 'yes' ))
+
+one_poll <- all_polls %>%
+  filter( poll == 1 ) %>%
+  select( vote )
+
+ex2_props <- one_poll %>%
+  specify( response = vote, success = 'yes' ) %>%
+  generate( reps = 1000, type = 'bootstrap' ) %>%
+  summarize( stat = mean(vote == 'yes' ))
+
+#glimpse( ex2_props )
+
+#calculate the variability of p-hat
+ex1_props %>%
+  summarise( variability = sd( stat ))
+
+ex2_props %>%
+  summarize( sd( stat ) )
+```
+
+```{r}
+# Combine data from both experiments
+both_ex_props <- bind_rows(ex1_props, ex2_props, .id = "experiment")
+
+# Using both_ex_props, plot stat colored by experiment
+ggplot(both_ex_props, aes(stat, color = experiment)) + 
+  # Add a density layer with bandwidth 0.1
+  geom_density(bw = 0.1)
+```
+
+
+#### Variability in $\hat{p}$
+How far are the data from the parameter? The variability of the #\hat{p}$ statistics give a measure for how far apart any given $\hat{p}$ and the paramter are expected to be.  
+
+**Impiracle Rule**: Approximately 95% of sample will produce $\hat{p}$s that are within 2SE of the distribution center.  
+Check that this holds:
+```{r}
+# Proportion of yes votes by poll
+props <- all_polls %>% 
+  group_by(poll) %>% 
+  summarize(prop_yes = mean(vote == "yes"))
+
+# The true population proportion of yes votes
+true_prop_yes <- 0.6
+
+# Proportion of polls within 2SE
+props %>%
+  # Add column: is prop_yes in 2SE of 0.6
+  mutate(is_in_conf_int = abs(prop_yes - true_prop_yes) < 2 * sd(prop_yes)) %>%
+  # Calculate  proportion in conf int
+  summarize(prop_in_conf_int = mean(is_in_conf_int))
+```
+
+Bootstrapping t-confidence interval.  
+
+* You can measure the variability associated with $\hat{p}$ by resampling from the original sample.
+* Once you know the variability of $\hat{p}$ you can use it as a way to measure how far away the true proportion is. 
+
+```{r}
+one_poll_boot <- one_poll %>%
+  specify(response = vote, success = "yes") %>%
+  generate(reps = 1000, type = "bootstrap") %>% 
+  calculate(stat = "prop")
+  
+p_hat <- one_poll %>%
+  # Calculate proportion of yes votes
+  summarize(stat = mean( vote == 'yes' )) %>%
+  pull()
+
+# Create an interval of plausible values
+one_poll_boot %>%
+  summarize(
+    # Lower bound is p_hat minus 2 std errs
+    lower = p_hat - 2*sd( stat ),
+    # Upper bound is p_hat plus 2 std errs
+    upper = p_hat + 2*sd( stat )
+  )
+
+# Manually calculate a 95% percentile interval
+one_poll_boot %>%
+  summarize(
+    lower = quantile(stat, p = 0.025),
+    upper = quantile(stat, p = 0.975)
+  )
+
+# Calculate the same interval, more conveniently
+percentile_ci <- one_poll_boot %>% 
+  get_confidence_interval( level = 0.95)
+percentile_ci
+
+#here is a function for that too
+calc_t_conf_int <- function(resampled_dataset) {
+  resampled_dataset %>%
+    summarize(
+      lower = p_hat - 2 * sd(stat),
+      upper = p_hat + 2 * sd(stat)
+    )
+}
+
+one_poll_boot %>% 
+  # Visualize in-between the endpoints given by percentile_ci
+  visualize( endpoints = percentile_ci, direction = 'between' )
+```
+
+#### Interpreting CIs and technical conditions
+
+Motivation for Confidence Intervals  
+
+* Goal is to find the parameter when all we know if the statistic
+* Never know whether the sample you colleted actually contains the true parameter
+* Can only say: We are 95% confident that the true proportion is between the the CI.
+
+Technical Conditions that must be met:
+
+* Sampling distribution is reasonably symmetric and bell-shaped
+* Sample size is reasonably large
+* Variability of resampled proportions
+
+
+Sample Size Effects
 
 
 
