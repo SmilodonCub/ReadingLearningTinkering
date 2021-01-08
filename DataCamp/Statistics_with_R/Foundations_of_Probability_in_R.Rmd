@@ -16,6 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library( dplyr )
 library( ggplot2 )
 library( gridExtra )
+library( openintro )
 ```
 
 ### The Binomial Distribution
@@ -156,6 +157,148 @@ var(rbinom(10000,25,.3))
 
 
 ### Laws of Probability
+
+#### Probability of Event A & Event B
+The probability of A & B is the P(A)*P(B):
+$$\mbox{Pr}( A \mbox{ and } B ) = \mbox{Pr}( A ) \cdot \mbox{Pr}( B )$$
+```{r}
+treeDiag(c("Event A","Event B"),
+         c(0.5, 0.5), list(c(0.5, 0.5), c(0.5, 0.5)))
+```
+Simulate this by collecting data on lots of coin flips
+```{r}
+#collect 100000 trials of two coin flips
+A <- rbinom( 100000, 1, 0.5 )
+B <- rbinom( 100000,1, 0.5 )
+#compare results from the two coins to see how many trials resulted in 2 heads
+mean( A & B )
+```
+another example with unequal probabilities
+```{r}
+# Simulate 100,000 flips of a coin with a 40% chance of heads
+A <- rbinom(100000, 1, 0.4)
+
+# Simulate 100,000 flips of a coin with a 20% chance of heads
+B <- rbinom(100000, 1, 0.2)
+
+# Estimate the probability both A and B are heads
+mean( A & B )
+```
+using multiple events
+```{r}
+# You've already simulated 100,000 flips of coins A and B
+A <- rbinom(100000, 1, .4)
+B <- rbinom(100000, 1, .2)
+
+# Simulate 100,000 flips of coin C (70% chance of heads)
+C <- rbinom(100000, 1, .7)
+
+# Estimate the probability A, B, and C are all heads
+mean( A & B & C )
+#0.4*0.2*0.7
+```
+
+
+#### Probability of A or B
+$$\mbox{Pr}( A \mbox{ or } B ) = \mbox{Pr}( A ) + \mbox{Pr}( B ) - \mbox{Pr}( A ) \cdot \mbox{Pr}( B )$$
+```{r}
+A <- rbinom(100000, 1, .5)
+B <- rbinom(100000, 1, .5)
+mean( A | B )
+```
+
+What about more complicated scenarios?  
+Three coins:  
+$$\mbox{Pr}( A \mbox{ or } B \mbox{ or } C) = \mbox{Pr}( A  \mbox{ and } B) - \mbox{Pr}( A \mbox{ and } C) - \mbox{Pr}( A \mbox{ and } B) + \mbox{Pr}( A \mbox{ and } B \mbox{ and } C )$$
+```{r}
+A <- rbinom(100000, 1, .5)
+B <- rbinom(100000, 1, .5)
+C <- rbinom(100000, 1, .5)
+mean( A | B | C )
+```
+
+```{r}
+A <- rbinom(100000, 1, .6)
+B <- rbinom(100000, 1, .1)
+mean( A | B )
+```
+
+```{r}
+# Use rbinom to simulate 100,000 draws from each of X and Y
+X <- rbinom(100000, 10, .6)
+Y <- rbinom(100000, 10, .7)
+
+# Estimate the probability either X or Y is <= to 4
+mean(X <= 4 | Y <= 4)
+
+# Use pbinom to calculate the probabilities separately
+prob_X_less <- pbinom(4,10,.6)
+prob_Y_less <- pbinom(4,10,.7)
+
+# Combine these to calculate the exact probability either <= 4
+prob_X_less + prob_Y_less - prob_X_less*prob_Y_less
+```
+
+
+#### Multiplying Random Variables
+
+Rules for manipulating random variables:  
+
+* $E[k\cdot X] = k \cdot E[X]$
+* $\mbox{Var}(k \cdot Y) = k^2 \cdot \mbox{Var}(X)$
+
+```{r}
+size <- 50
+mult <- 4
+mean( rbinom( 100000, size, 0.4 ) )
+#what happens is the size is increased by 3x
+mean( rbinom( 100000, size*mult, 0.4 ) )
+```
+
+```{r}
+# Simulate 100,000 draws of a binomial with size 20 and p = .1
+X <- rbinom(100000, 20, .1)
+
+# Estimate the expected value of X
+mean( X )
+
+# Estimate the expected value of 5 * X
+mean( 5*X )
+```
+```{r}
+# X is simulated from 100,000 draws of a binomial with size 20 and p = .1
+X <- rbinom(100000, 20, .1)
+
+# Estimate the variance of X
+var(X)
+
+# Estimate the variance of 5 * X
+var(5*X)
+```
+
+
+#### Adding Two Random Variables
+
+$$E[X+Y] = E[X] + E[Y]$$
+(even if X and Y are not independent)
+$$\mbox{Var}[X+Y] = \mbox{Var}[X] + \mbox{Var}[Y]$$
+(only if X and Y are independent)
+```{r}
+X <- rbinom( 100000, 10, .5 )
+Y <- rbinom( 100000, 100, .2 )
+Z <- X + Y 
+
+res <- paste( 'E[X]=', mean(X), ',  E[Y]=', mean(Y), '\nE[Z]=', mean(Z), 
+       '\nVar[X]=', mean(X), ',  Var[Y]=', mean(Y), '\nVar[Z]=', mean(Z) )
+
+cat( res, sep = '\n')
+```
+
+```{r}
+X <- rbinom(100000, 20, .3 )
+Y <- rbinom(100000, 40, .1 )
+mean( X + Y )
+```
 
 
 
