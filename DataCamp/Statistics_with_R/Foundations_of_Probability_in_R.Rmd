@@ -17,6 +17,8 @@ library( dplyr )
 library( ggplot2 )
 library( gridExtra )
 library( openintro )
+library( tidyr )
+library(hrbrthemes)
 ```
 
 ### The Binomial Distribution
@@ -300,13 +302,466 @@ Y <- rbinom(100000, 40, .1 )
 mean( X + Y )
 ```
 
-
-
 ### Bayesian Statistics
 
+#### Updating with Evidence
+How can we tell if a coin is fair or biased?
+If we run an experiment by flipping the coin, we can tell the likelihood the coin is biased from these results.  
+Updating beliefs after seeing evidence: this process is at the heart of Bayesian statistics
+
+```{r}
+numtrials <- 50000
+numcoins <- 20
+fairP <- 0.5
+biasedP <- 0.75
+val <- 14
+#flip 50,000 fair coins 20 times
+X <- rbinom(numtrials, numcoins, fairP )
+#do the same with a biased coin
+Y <- rbinom(numtrials, numcoins, biasedP )
+
+df <- data.frame( 'X' = X, 'Y' = Y ) %>%
+  mutate( condX = X == val,
+          condY = Y == val )
+Xhist <- df %>% ggplot( aes( x = X, fill = condX ) ) +
+  geom_histogram( binwidth = 1 ) +
+  scale_fill_manual( values = c( 'blue','red')) +
+  xlim( c( 1,numcoins ) )
+Yhist <- df %>% ggplot( aes( x = Y, fill = condY ) ) +
+  geom_histogram( binwidth = 1) +
+  scale_fill_manual( values = c( 'blue','red')) +
+  xlim( c( 1,numcoins ) )
+grid.arrange( Xhist, Yhist, ncol = 1 )
+```
+What is the probability of getting 14 heads with the fair and biased coin?
+```{r}
+p14fair <- dbinom( val, numcoins, fairP )
+p14biased <- dbinom( val, numcoins, biasedP )
+#results for simulation
+p14fexp <- sum( X == val )/numtrials
+p14bexp <- sum( Y == val )/numtrials
+
+res <-paste( 'True Prop fair coin:', p14fair,
+       '\nTrue Prop biased coin:', p14biased,
+       '\nSimulated Prob fair coin:', p14fexp,
+       '\nSimulated Prob biased coin:', p14bexp)
+cat( res )
+```
+The biased coin has a much higher probability of a 14heads result than the fair coin. However, it is still possible for the fair coin to have a 14 result, albeit much less likely than the biased coin.  
+
+**Conditional Probability**: What is the probability that the coin is biased given that we get the result of 14 heads?
+$$\mbox{Pr}(\mbox{ Biased}|14 \mbox{ Heads }) = \frac{\mbox{ # total w/} 14 \mbox{ Heads}}{\mbox{# total w/} 14 \mbox{ Heads} }$$
+
+```{r}
+p14tot <- p14fexp + p14bexp
+Pbiased_given_14 <- p14bexp / p14tot
+
+res <- paste0( 'Conditional Probability the coin is biased given 14 heads: ', Pbiased_given_14,
+              '\nThere is a ', round( Pbiased_given_14*100,2 ), '% chance the coin is biased' )
+
+cat( res,sep = '\n' )
+```
+
+```{r}
+# Simulate 50000 cases of flipping 20 coins from fair and from biased
+fair <- rbinom( 50000, 20, .5 )
+biased <- rbinom( 50000, 20, .75 )
+
+# How many fair cases, and how many biased, led to exactly 11 heads?
+fair_11 <- sum( fair == 11)
+biased_11 <- sum( biased == 11 )
+
+# Find the fraction of fair coins that are 11 out of all coins that were 11
+# This is the posterior probability that the coin with 11/20 is fair
+fair_11/(fair_11+biased_11)
+```
+```{r}
+# Simulate 50000 cases of flipping 20 coins from fair and from biased
+fair <- rbinom( 50000, 20, .5 )
+biased <- rbinom( 50000, 20, .75 )
+
+# How many fair cases, and how many biased, led to exactly 16 heads?
+fair_16 <- sum( fair == 16)
+biased_16 <- sum( biased == 16 )
+
+# Find the fraction of fair coins that are 16 out of all coins that were 16
+# This is the posterior probability that the coin with 16/20 is fair
+fair_16/(fair_16+biased_16)
+```
+
+
+#### Prior Probability
+The previous example compared two different samples of coins with equal sizes. But what if there are different numbers of types of coin?
+
+```{r}
+numtrialsf <- 90000
+numtrialsb <- 10000
+numcoins <- 20
+fairP <- 0.5
+biasedP <- 0.75
+val <- 14
+#flip 90,000 fair coins 20 times
+X <- rbinom(numtrialsf, numcoins, fairP )
+#flip 10,000 biased coins 20 times
+Y <- rbinom(numtrialsb, numcoins, biasedP )
+
+dfX <- data.frame( 'X' = X ) %>%
+  mutate( condX = X == val )
+dfY <- data.frame( 'Y' = Y ) %>%
+  mutate( condY = Y == val )
+Xhist <- dfX %>% ggplot( aes( x = X, fill = condX ) ) +
+  geom_histogram( binwidth = 1 ) +
+  scale_fill_manual( values = c( 'blue','red')) +
+  xlim( c( 1,numcoins ) ) +
+  ylim( c( 0, 16000 ) )
+Yhist <- dfY %>% ggplot( aes( x = Y, fill = condY ) ) +
+  geom_histogram( binwidth = 1) +
+  scale_fill_manual( values = c( 'blue','red')) +
+  xlim( c( 1,numcoins ) ) +
+  ylim( c( 0, 16000 ) )
+grid.arrange( Xhist, Yhist, ncol = 1 )
+```
+In this simulation, a result of 14 heads is more likely to be from fair coin even though it is more probably for a given biased coin tiral to result in 14 than a given fair coin; this is because the fair coins are so much more numerous.
+
+```{r}
+fair <- sum( X == 14 )
+biased <- sum( Y == 14 )
+Cond_bg14 <- biased / (biased + fair )
+res <- paste( 'The conditional probability of the coin being biased given that the result was 14\nP(biased|14) =', round( Cond_bg14,4 ) )
+cat( res, sep = '\n')
+```
+
+```{r}
+#PRIOR BELIEF: a 80% chance the coin is fair and a 20% chance it is biased to 75%.
+# Simulate 8000 cases of flipping a fair coin, and 2000 of a biased coin
+fair_flips <- rbinom( 8000, 20, .5 )
+biased_flips <- rbinom( 2000, 20, .75)
+
+# Find the number of cases from each coin that resulted in 14/20
+fair_14 <- sum( fair_flips == 14 )
+biased_14 <- sum( biased_flips == 14 )
+
+# Use these to estimate the posterior probability
+fair_14/(fair_14 + biased_14)
+
+```
+
+Three coins
+```{r message=FALSE, warning=FALSE}
+# Simulate 80,000 draws from fair coin, 10,000 from each of high and low coins
+flips_fair <- rbinom( 80000, 20, .5 )
+flips_high <- rbinom( 10000, 20, .75 )
+flips_low <- rbinom( 10000, 20, .25 )
+
+# Compute the number of coins that resulted in 14 heads from each of these piles
+fair_14 <- sum( flips_fair == 14 )
+high_14 <- sum( flips_high == 14 )
+low_14 <- sum( flips_low == 14 )
+
+# Compute the posterior probability that the coin was fair
+fair_14/(fair_14 + high_14 + low_14)
+
+#visualize the distributions
+df_fair <- data.frame( 'fair' = flips_fair ) %>%
+  mutate( condF = flips_fair == val )
+df_high <- data.frame( 'high' = flips_high ) %>%
+  mutate( condH = flips_high == val )
+df_low <- data.frame( 'low' = flips_low ) %>%
+  mutate( condL = flips_low == val )
+fhist <- df_fair %>% ggplot( aes( x = fair, fill = condF ) ) +
+  geom_histogram( binwidth = 1 ) +
+  scale_fill_manual( values = c( 'blue','red')) +
+  xlim( c( 1,numcoins ) ) +
+  ylim( c( 0, 16000 ) )
+hhist <- df_high %>% ggplot( aes( x = high, fill = condH ) ) +
+  geom_histogram( binwidth = 1) +
+  scale_fill_manual( values = c( 'blue','red')) +
+  xlim( c( 1,numcoins ) ) +
+  ylim( c( 0, 16000 ) )
+lhist <- df_low %>% ggplot( aes( x = low, fill = condL ) ) +
+  geom_histogram( binwidth = 1) +
+  scale_fill_manual( values = c( 'blue','red')) +
+  xlim( c( 1,numcoins ) ) +
+  ylim( c( 0, 16000 ) )
+grid.arrange( fhist, hhist, lhist, ncol = 1 )
+```
+
+
+#### Bayes' Theorem
+Finding the exact conditional probability:
+1)
+$$P(\mbox{biased & }14)=P(14|\mbox{biased})\cdot P(\mbox{biased})$$
+also,
+2)
+$$P(\mbox{fair & }14)=P(14|\mbox{fair})\cdot P(\mbox{fair})$$
+knowing from before
+3)
+$$P(\mbox{biased}|14)=\frac{P(14 \mbox{ Heads & Biased})}{P(14 \mbox{ Heads & Biased})+P(14 \mbox{ Heads & Fair})}$$
+we can substitute in 1 & 2 to 3
+4)
+$$P(\mbox{biased}|14)= \frac{P(14|\mbox{biased})\cdot P(\mbox{biased})}{P(14|\mbox{biased})\cdot P(\mbox{biased}) + P(14|\mbox{fair})\cdot P(\mbox{fair})}$$
+This is an example of an application of Bayes' Theorem:
+$$P(B|A)= \frac{P(B|A)\cdot P(A)}{P(B|A)\cdot P(A) + P(B|!A)\cdot P(!A)}$$
+where event A = biased and event B = 14 heads
+
+Let's try is:
+Calculate some conditional probabilities...
+```{r}
+# Use dbinom to calculate the probability of 11/20 heads with fair or biased coin
+probability_fair <- dbinom( 11, 20, .5)
+probability_biased <- dbinom( 11, 20, .75)
+# Calculate the posterior probability that the coin is fair
+pf_11 <- probability_fair / (probability_fair + probability_biased)
+
+# Find the probability that a coin resulting in 14/20 is fair
+probability_fair <- dbinom( 14, 20, .5)
+probability_biased <- dbinom( 14, 20, .75)
+pf_14 <- probability_fair / (probability_fair + probability_biased)
+
+# Find the probability that a coin resulting in 18/20 is fair
+probability_fair <- dbinom( 18, 20, .5)
+probability_biased <- dbinom( 18, 20, .75)
+pf_18<- probability_fair / (probability_fair + probability_biased)
+
+res <-paste( 'P(fair & 11):', round(pf_11,4),
+             '\nP(fair & 14):', round(pf_14,4),
+             '\nP(fair & 18):', round(pf_18,4))
+cat( res, sep = '\n')
+```
+
+We now learn that there is a 99% probability the coin is fair. Here we incorporate this prior into the calculation. We would like to know the probability that a coin is fair given the result of the trial was 16:
+```{r}
+# Use dbinom to find the probability of 16/20 from a fair or biased coin
+probability_16_fair <- dbinom( 16,20,.5)
+probability_16_biased <- dbinom( 16,20,.75)
+
+# Use Bayes' theorem to find the posterior probability that the coin is fair
+pF <- 0.99
+pB <- 0.01
+probability_16_fair*pF/(probability_16_fair*pF + probability_16_biased*pB)
+```
 
 
 ### Related Distributions
+
+#### The Normal Distribution
+run a typical coin flip, but with many coins for each trial. Observe the difference in distribution envelopes:
+```{r}
+d10 <- data.frame( 'X' = rbinom(100000, 10, .5) )
+d100 <- data.frame( 'X' = rbinom(100000, 100, .5) )
+d1000 <- data.frame( 'X' = rbinom(100000, 1000, .5) )
+```
+
+```{r}
+p10 <- ggplot( d10, aes( x = X ) ) +
+  geom_histogram(binwidth=1)
+p100 <- ggplot( d100, aes( x = X ) ) +
+  geom_histogram(binwidth=1)
+p1000 <- ggplot( d1000, aes( x = X ) ) +
+  geom_histogram(binwidth=1)
+
+grid.arrange( p10, p100, p1000, ncol = 1 )
+```
+With increasing size of sample, the distribution of the binomial coin flipping process more approximates a Normal distribution
+$$X \sim \mbox{Normal}(\mu,\sigma)$$
+
+* $\mu$: the mean of the distribution  
+* $\sigma = \sqrt{\mbox{Var}X} =$ the square root of the average squared distance of each measure from the mean, $\mu$
+
+finding the normal approximation to the binomial:
+```{r}
+size <- 1000
+p <- 0.5
+binomial <- rbinom( 100000,size,p )
+mu <- size*p
+stdev <- sqrt( size*p*( 1-p ) )
+
+normal <- rnorm( 100000,mu,stdev )
+```
+visualize the normal and binomial distributions. are they similar?
+```{r}
+df <- data.frame( Dist = factor( rep( c('Binomial','Normal'), each = 100000)), 
+                  Val = c( rbinom( 100000,size,p ), rnorm( 100000,mu,stdev ) ) )
+glimpse( df )
+```
+```{r}
+p1 <- df %>%
+  ggplot( aes( x = Val, fill = Dist ) ) +
+  geom_histogram( position = 'identity', bins = 30, alpha = 0.4) +
+  scale_fill_manual(values=c("blue", "red")) +
+  scale_color_manual(values=c("#blue", "red"))
+  
+p1
+```
+
+
+```{r}
+# Draw a random sample of 100,000 from the Binomial(1000, .2) distribution
+binom_sample <- rbinom(100000,1000,.2)
+
+# Draw a random sample of 100,000 from the normal approximation
+normal_sample <- rnorm(100000,1000*0.2,sqrt(1000*.2*(1-.2)))
+
+df = data.frame( 'binomial' = binom_sample, 'normal' = normal_sample ) %>%
+  pivot_longer( cols = everything(), names_to = 'Dist', values_to = 'Val' )
+```
+
+```{r}
+p1 <- df %>%
+  ggplot( aes( x = Val, fill = Dist ) ) +
+  geom_histogram( position = 'identity', bins = 30, alpha = 0.4) +
+  scale_fill_manual(values=c("blue", "red")) +
+  scale_color_manual(values=c("#blue", "red"))
+  
+p1
+```
+
+```{r}
+# Simulations from the normal and binomial distributions
+binom_sample <- rbinom(100000, 1000, .2)
+normal_sample <- rnorm(100000, 200, sqrt(160))
+
+# Use binom_sample to estimate the probability of <= 190 heads
+mean( binom_sample <= 190 )
+
+# Use normal_sample to estimate the probability of <= 190 heads
+mean( normal_sample <= 190)
+
+# Calculate the probability of <= 190 heads with pbinom
+pbinom( 190, 1000, .2)
+
+# Calculate the probability of <= 190 heads with pnorm
+pnorm( 190, 200, sqrt(160) )
+```
+
+```{r}
+# Draw a random sample of 100,000 from the Binomial(10, .2) distribution
+binom_sample <- rbinom( 100000, 10, .2 )
+
+# Draw a random sample of 100,000 from the normal approximation
+normal_sample <- rnorm( 100000, 10*.2, sqrt( 10*.2*(1-.2)))
+
+df = data.frame( 'binomial' = binom_sample, 'normal' = normal_sample ) %>%
+  pivot_longer( cols = everything(), names_to = 'Dist', values_to = 'Val' ) %>%
+  ggplot( aes( x = Val, fill = Dist ) ) +
+  geom_histogram( position = 'identity', bins = 30, alpha = 0.4) +
+  scale_fill_manual(values=c("blue", "red")) +
+  scale_color_manual(values=c("#blue", "red"))
+df
+```
+
+#### The Poisson Distribution
+Considering when a rare event happens out of many possibilities.  
+look at the binomial distribution where the size is large but the probability is very small
+```{r}
+binom <- data.frame( 'binom' = rbinom( 100000, 1000, .001 ) ) %>%
+  ggplot( aes( x = binom ) ) +
+  geom_histogram(binwidth = 0.5)
+binom
+```
+
+The Poisson Distribution is described by only 1 parameter, $\lambda$, the mean
+$$X \sim \mbox{Poisson}(\lambda)$$
+the Expectation, $E[X] = \lambda$  
+The Variance, $\mbox{Var}(X) = \lambda$
+
+```{r}
+poisson <- data.frame( 'vals' = rpois( 100000, 1 ) ) %>%
+  ggplot( aes( vals ) ) +
+  geom_histogram(binwidth = 0.5)
+poisson
+```
+
+Compare the binomial and poisson distribution
+```{r}
+compare <- data.frame('binom'=rbinom( 100000, 1000, .001 ), 'vals'=rpois( 100000, 1 ) ) %>%
+  pivot_longer( cols = everything(), names_to = 'Dist', values_to = 'Val' ) %>%
+  ggplot( aes( x = Val, fill = Dist ) ) +
+  geom_histogram( position = 'identity', alpha = 0.4, binwidth = 1) +
+  scale_fill_manual(values=c("blue", "red")) +
+  scale_color_manual(values=c("#blue", "red"))
+compare
+```
+The poisson distribution can have any $\lambda$ so long as it is a positive value
+```{r}
+compare <- data.frame( 'binom' = rbinom( 100000, 1000, .002 ), 
+                       'poisson' = rpois( 100000, 2 ) ) %>%
+  pivot_longer( cols = everything(), names_to = 'Dist', values_to = 'Val' ) %>%
+  ggplot( aes( x = Val, fill = Dist ) ) +
+  geom_histogram( position = 'identity', alpha = 0.4, binwidth = 1) +
+  scale_fill_manual(values=c("blue", "red")) +
+  scale_color_manual(values=c("#blue", "red"))
+compare
+```
+
+```{r}
+# Simulate 100,000 draws from Poisson(2)
+poisson_sample <- rpois( 100000, 2 )
+
+# Find the percentage of simulated values that are 0
+mean( poisson_sample == 0 )
+
+# Use dpois to find the exact probability that a draw is 0
+dpois( 0, 2 )
+```
+
+```{r}
+
+compare <- data.frame( 'X' = rpois( 100000, 1 ),
+                       'Y' = rpois( 100000, 2 ),
+                       'Z' = X + Y,
+                       'W' = rpois( 100000, 3 ) ) %>%
+  pivot_longer( cols = everything(), names_to = 'Dist', values_to = 'Val' ) %>%
+  filter( Dist %in% c( 'Z', 'W' )) %>%
+  ggplot( aes( x = Val, fill = Dist ) ) +
+  geom_histogram( position = 'identity', alpha = 0.4, binwidth = 1) +
+  scale_fill_manual(values=c("blue", "red")) +
+  scale_color_manual(values=c("#blue", "red"))
+compare
+```
+
+
+#### The Geometric Distribution
+Waiting for a particular event with some probability
+$$X \sim \mbox{Geom}(p)$$
+```{r}
+flips <- rbinom( 100, 1, .1 )
+which( flips == 1 )[1]
+
+#replicate this process 10 times
+replicate( 10, which( rbinom( 100, 1, .1 ) == 1 )[ 1 ] )
+```
+
+```{r}
+geom <- data.frame( 'geom' = rgeom( 100000, .1 ) ) %>%
+  ggplot( aes( x = geom ) ) +
+  geom_histogram(binwidth = 1)
+geom
+```
+The largest value is at `geom` = 1, where no head has been flipped because no coin has. The distribution steadily decreases to represent the coins that have not flipped heads yet.
+```{r}
+#find the mean
+round( mean( geom$data$geom ), 0 )
+```
+**Expected Value**: The average number of tails before the first heads.
+$$E[X] = \frac{1}{p} - 1$$
+
+```{r}
+#A new machine arrives in a factory. This type of machine is very unreliable: every day, it has a 10% chance of breaking permanently. How long would you expect it to last?
+# Find the probability the machine breaks on 5th day or earlier
+pgeom(4, .1 )
+
+# Find the probability the machine is still working on 20th day
+1-pgeom( 19,.1)
+```
+
+```{r}
+# Calculate the probability of machine working on day 1-30
+still_working <- 1-pgeom( c(0:29), .1)
+
+# Plot the probability for days 1 to 30
+plot(1:30, still_working)
+```
 
 
 
