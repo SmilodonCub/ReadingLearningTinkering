@@ -1,0 +1,352 @@
+---
+title: 'Dealing with Missing Data in `R`'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+library( tidyr )
+library( naniar )
+```
+
+### Why care about missing data?
+
+#### Introduction to missing data
+"The best thing to do with missing data is to not have any." -*Gertrude M. Cox*  
+
+* Working with real-world data == working with missing data
+* Missing Data can have unexpected effects on your analysis
+* Bad imputation can lead to poor estimates and decisions
+
+Checking for missing values with `any_na()`
+```{r}
+x <- c( 1, NA, 3, NA, NA, 5 )
+baset0 <- Sys.time()
+any( is.na( x ) )
+timeint_base <- Sys.time() - baset0
+
+naniart0 <- Sys.time()
+any_na( x )
+timeint_naniar <- Sys.time() - naniart0
+
+base2t0 <- Sys.time()
+anyNA( x )
+timeint_base2 <- Sys.time() - base2t0
+
+res <- paste( 'Comparing runtime for methods to detect NA:\nbase R runtime:', timeint_base,
+              '\nanyNA() base r runtime', timeint_base2,
+              '\nany_na() naniar runtime:', timeint_naniar)
+cat( res, sep = '\n')
+```
+
+```{r}
+#return a boolean vector that tests for NAs
+are_na( x )
+```
+
+```{r}
+#return the number of NAs
+n_miss( x )
+```
+```{r}
+#return the proportion of NAs
+prop_miss( x )
+```
+
+Generally, operations with `NA` values returns an `NA` value:
+```{r}
+heights <- data.frame( 'Sophie' = 165, 'Dan' = 177, 'Fred' = NA )
+sum( heights )
+```
+
+**Important Distinctions**:  
+
+* `NaN` == Not a Number. is evaluated the same as `NA`
+* `NULL` == empty. is Not the same as `NA`
+* `Inf` == Infinity. is Not the same as `NA`
+```{r}
+r1 <- any_na( NaN )
+r2 <- any_na( NULL )
+r3 <- any_na( Inf )
+r4 <- any_na( 0 )
+
+res <- paste( 'When tested any_na()::\nNaN evaluates:', r1,
+              '\nNULL evaluates:', r2,
+              '\nInf evaluates:', r3,
+              '\n0 evaluates:', r4 )
+cat( res, sep='\n' )
+```
+
+Conditional Statement Behaviors to look out for:
+```{r}
+r1 <- NA | TRUE
+r2 <- NA | FALSE
+r3 <- NA | NaN
+r4 <- NaN | NA
+
+res <- paste( 'Conditional Statement Behaviors to be aware of::\nNA | TRUE evaluates:', r1,
+              '\nNA | FALSE evaluates:', r2,
+              '\nNA | NaN evaluates:', r3,
+              '\nNaN | NA evaluates:', r4 )
+cat( res, sep='\n' )
+```
+
+```{r}
+# Create x, a vector, with values NA, NaN, Inf, ".", and "missing"
+x <- c(NA, NaN, Inf, ".", "missing")
+
+# Use any_na() and are_na() on to explore the missings
+any_na(x)
+are_na(x)
+```
+
+```{r}
+dat_hw_url <- 'https://raw.githubusercontent.com/SmilodonCub/ReadingLearningTinkering/master/DataCamp/Statistics_with_R/dat_hw.csv'
+dat_hw <- read.csv( dat_hw_url ) %>%
+  select( -X )
+head( dat_hw )
+```
+
+```{r}
+# Use n_miss() to count the total number of missing values in dat_hw
+n_miss(dat_hw)
+
+# Use n_miss() on dat_hw$weight to count the total number of missing values
+n_miss(dat_hw$weight)
+
+# Use n_complete() on dat_hw to count the total number of complete values
+n_complete(dat_hw)
+
+# Use n_complete() on dat_hw$weight to count the total number of complete values
+n_complete(dat_hw$weight)
+
+# Use prop_miss() and prop_complete() on dat_hw to count the total number of missing values in each of the variables
+prop_miss(dat_hw)
+prop_complete(dat_hw)
+```
+
+
+#### Why care about missing values?
+Introduction to missingness summaries
+
+Basic summary missingness:
+```{r}
+n_miss( x )
+n_complete( x )
+```
+
+Dataframe summaries of missingness:  
+
+`miss_var_summary()`: summarize the number of missing in each variable/feature/column
+```{r}
+miss_x_cols <- miss_var_summary( dat_hw )
+glimpse( miss_x_cols )
+```
+
+```{r}
+miss_x_cols <- miss_var_summary( airquality )
+glimpse( miss_x_cols )
+```
+
+`miss_case_summary`: each case is a row in the dataframe. info on missing values by row.
+```{r}
+dim( miss_case_summary( dat_hw ) )
+```
+```{r}
+head( miss_case_summary( airquality ) )
+```
+
+Missing Data Tabulations:  
+
+`miss_var_table()` returns a dataframe with info on the variables missing data as well as the percentage of variables affected by missing data
+```{r}
+miss_var_table( dat_hw )
+```
+can be interpretted as: 2 variables are missing 15 observations each. 100% of the variables in the dataframe are affected this way
+
+```{r}
+miss_var_table( airquality )
+```
+can be interpretted as: 66.6% of the features in this dataframe (total of 4 features) are missing 0 observations. One variables (16.6% of features) is missing 7 observations while another variable (16.6% of features) is missing 37 observations.  
+
+`miss_case_table()`: returns the same information but by cases (rows)
+```{r}
+miss_case_table( dat_hw )
+```
+can be interpretted as: 70% of rows (70 rows) are missing 0 observations. 30% of rows (30 rows) are missing 1 observation.
+
+```{r}
+miss_case_table( airquality )
+```
+can be interpretted as: 72.5% of rows (111 rows) are missing 0 observations. 26.1% of rows (40 rows) are missing 1 observation. 1.3% or rows (2 rows) are missing 2 observations.
+
+Other useful functions:  
+
+* `miss_var_span()` summarizes missing data by span of data (good for time series analysis e.g. weekly spans of 7)
+* `miss_var_run()` summarizes runs of missing data. good for finding unusual patterns of missing data. returns runs of complete and missing data. great for sinding systemic sampling error.  
+
+Using summaries with `group_by()`:
+```{r}
+airquality %>%
+  group_by( Month ) %>%
+  miss_var_summary()
+```
+
+```{r}
+glimpse( pedestrian )
+```
+```{r}
+miss_var_table( pedestrian )
+```
+```{r}
+# Calculate the summaries for each run of missingness for the variable, hourly_counts
+miss_var_run(pedestrian, var = hourly_counts)
+# Calculate the summaries for each span of missingness, 
+# for a span of 4000, for the variable hourly_counts
+miss_var_span(pedestrian, var = hourly_counts, span_every = 4000)
+# For each `month` variable, calculate the run of missingness for hourly_counts
+pedestrian %>% group_by(month) %>% miss_var_run(hourly_counts)
+# For each `month` variable, calculate the span of missingness 
+# of a span of 2000, for the variable hourly_counts
+pedestrian %>% group_by(month) %>% miss_var_span(var = hourly_counts, span_every = 2000)
+```
+
+
+#### How do we visual missing values?
+
+`naniar` missing data visualization methods.  
+
+Overview of missingness: a type of heatmap for missing data. black == missing. also provides basic stats of proportions of missingness.
+```{r}
+vis_miss( airquality )
+```
+```{r}
+vis_miss( dat_hw )
+```
+```{r}
+vis_miss( airquality )
+```
+```{r}
+vis_miss( airquality, cluster = TRUE)
+```
+```{r}
+vis_miss( dat_hw, cluster = TRUE)
+```
+
+Looking at missing observations in both variables and cases
+```{r}
+varp <- gg_miss_var( airquality )
+casep <- gg_miss_case( airquality )
+grid.arrange( varp, casep, ncol = 2 )
+```
+```{r}
+varp <- gg_miss_var( dat_hw )
+casep <- gg_miss_case( dat_hw )
+grid.arrange( varp, casep, ncol = 2 )
+```
+
+faceting a `gg_miss_var()` plot acts like visualizing a `group_by`
+```{r}
+gg_miss_var( airquality, facet = Month )
+```
+
+Visualizing missingness patterns  
+
+`gg_miss_upset()` shows co-occuring missing observations across variables
+```{r}
+gg_miss_upset( airquality )
+```
+`gg_miss_fct()`: visualizing factors for missingness. again, kinda like visualizing missing `group_by` result. Gives a heat map view for each feature (y-axis) and each montt (x-axis) where color intensity is the number of missing observations.
+```{r}
+gg_miss_fct( x = airquality, fct = Month )
+```
+`gg_miss_span()` visualizes the number of missing observations for a given span.
+
+```{r}
+gg_miss_span( pedestrian, hourly_counts, span_every = 3000)
+```
+
+```{r}
+# Visualize all of the missingness in the `riskfactors`  dataset
+vm <- vis_miss(riskfactors) +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+# Visualize and cluster all of the missingness in the `riskfactors` dataset
+vmc <-vis_miss(riskfactors, cluster = TRUE) +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+# visualize and sort the columns by missingness in the `riskfactors` dataset
+vms <- vis_miss(riskfactors, sort_miss = TRUE) +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+# visualize cluster and sort the columns by missingness in the `riskfactors` dataset
+vmcs <- vis_miss(riskfactors, sort_miss = TRUE, cluster = TRUE ) +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+grid.arrange( vm, vmc, vms, vmcs, ncol = 2 )
+```
+
+```{r}
+# Visualize the number of missings in cases using `gg_miss_case()`
+caserf <- gg_miss_case(riskfactors)
+
+# Explore the number of missings in cases using `gg_miss_case()` 
+# and facet by the variable `education`
+fct_caserf <- gg_miss_case(riskfactors, facet = education)
+
+grid.arrange( caserf, fct_caserf, ncol = 2 )
+
+# Visualize the number of missings in variables using `gg_miss_var()`
+varrf <- gg_miss_var(riskfactors)
+
+# Explore the number of missings in variables using `gg_miss_var()` 
+# and facet by the variable `education`
+fct_varrf <- gg_miss_var(riskfactors, facet = education)
+
+grid.arrange( varrf, fct_varrf, ncol = 2 )
+```
+
+```{r}
+# With the riskfactors dataset, explore how the missingness changes across the marital variable using gg_miss_fct()
+gg_miss_fct(x = riskfactors, fct = marital)
+
+# Using the pedestrian dataset, explore how the missingness of hourly_counts changes over a span of 3000 
+gg_miss_span(pedestrian, var = hourly_counts, span_every = 3000)
+
+# Using the pedestrian dataset, explore the impact of month by faceting by month
+# and explore how missingness changes for a span of 1000
+gg_miss_span(pedestrian, var = hourly_counts , span_every = 1000, facet = month)
+```
+
+### Wrangling and tidying up missing values.
+
+
+
+### Testing missing relationships
+
+
+
+### Connecting the dots (Imputation)
+
+
+
+<br><br><br>
