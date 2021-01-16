@@ -16,8 +16,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library( dplyr )
 library( ggplot2 )
 library( gridExtra )
-library( tidyr )
+library( tidyverse )
 library( naniar )
+library( simputation )
 ```
 
 ### Why care about missing data?
@@ -339,14 +340,947 @@ gg_miss_span(pedestrian, var = hourly_counts , span_every = 1000, facet = month)
 
 ### Wrangling and tidying up missing values.
 
+#### Searching for an replacing missing values
+Assumptions with missing data: finding missing values and labelling with `NA`
+
+In a perfect word, missing data is labelled `NA`. However, it may be the case that it is coded as 'missing', 'Not Available', 'N/A' or some other permutation.  
+
+`miss_search_count()`: Searching for missing values
+```{r}
+employees_url <- 'https://raw.githubusercontent.com/ChaitanyaBaweja/Programming-Tutorials/master/Missing-Data-Pandas/employees.csv'
+employees <- read.csv( employees_url )
+glimpse( employees )
+#explicitly search for strange NA mislabellings
+employees %>%
+  miss_scan_count( search = list('n.a', 'na') )
+employees %>%
+  miss_scan_count( search = common_na_strings )
+print( common_na_strings )
+```
+
+`replace_with_na()`: replace specified values with `NA`  
+
+* `replace_with_na_all()`: all variables
+* `replace_with_na_at()`: a subset of selected variables
+* `replace_with_na_if()`: a subset of variables that fulfill some condition
+```{r}
+#replace all instances of 'N/A' and 'N/a' from the feature `grade`
+employees %>%
+  replace_with_na( replace = list( Team = c('n.a', 'na') ) ) %>%
+  miss_scan_count( search = common_na_strings )
+
+#replace any instance of -99 with `NA`
+employees %>%
+  replace_with_na_all( condition = ~.x == "" ) %>%
+  miss_scan_count( search = common_na_strings )
+  
+
+#replace multiple with `NA`
+employees %>%
+  replace_with_na_all( condition = ~.x %in% common_na_strings ) %>%
+  miss_scan_count( search = common_na_strings )
+```
+
+```{r}
+# Explore the strange missing values "N/A"
+miss_scan_count(data = pedestrian, search = list("N/A") )
+
+# Explore the strange missing values "missing"
+miss_scan_count(data = pedestrian, search = list("missing") )
+
+# Explore the strange missing values "na"
+miss_scan_count(data = pedestrian, search = list('na' ) )
+
+# Explore the strange missing values " " (a single space)
+miss_scan_count(data = pedestrian, search = list(' ') )
+
+# Explore all of the strange missing values, "N/A", "missing", "na", " "
+miss_scan_count(data = pedestrian, search = list("N/A", "missing", "na", " "))
+```
+
+
+```{r}
+# Print the top of the pacman data using `head()`
+glimpse(employees)
+
+# Replace the strange missing values "N/A", "na", and  
+# "missing" with `NA` for the variables, year, and score
+emp_clean <- replace_with_na(data = employees, replace = list(Team = c("", "na", "n.a","NaN"),
+                                Bonus.. = c("", "na", "n.a","NaN")))
+                                        
+# Test if `pacman_clean` still has these values in it?
+miss_scan_count(emp_clean, search = list("", "na", "n.a", "NaN"))
+```
+
+```{r}
+# Use `replace_with_na_at()` to replace with NA
+replace_with_na_at(employees,
+                   .vars = c('First.Name', 'Gender', 'Team'), 
+                   ~.x %in% c("", " ", "na", 'NaN', '?'))
+
+# Use `replace_with_na_if()` to replace with NA the character values using `is.character`
+replace_with_na_if(employees,
+                   .predicate = is.character, 
+                   ~.x %in% c("", " ", "na", 'NaN', '?'))
+
+# Use `replace_with_na_all()` to replace with NA
+replace_with_na_all(employees, condition = ~.x %in% c("", " ", "na", 'NaN', '?'))
+```
+
+#### Filling down missing values
+
+**Explicitly Missing**: they are missing in the data and indicated with `NA` or something else.  
+**Implicitly Missing**: Not shown in the data, but implied (e.g. a missing level)
+
+
+```{r}
+name <- c( 'jesse', 'jesse', 'jesse', 'jesse', 'andy',  'andy',  'andy',  'nic',   'nic',
+           'dan',   'dan',   'alex', 'alex',  'alex',  'alex')
+time <- c( 'morning', 'afternoon',  'evening', 'late_night', 'morning', 'afternoon',
+           'late_night', 'afternoon', 'late_night', 'morning', 'evening', 'morning', 
+           'afternoon',  'evening', 'late_night' )
+value <- c(6678, 800060, 475528, 143533, 425115, 587468, 111000, 588532, 915533, 388148,
+           180912, 552670,  98355, 266055, 121056)
+
+frogger <- data.frame( 'name' = name, 'time' = time, 'value' = value )
+```
+
+```{r}
+glimpse( frogger )
+# Use `complete()` on the `time` and `name` variables to  
+# make implicit missing values explicit
+frogger_tidy <- frogger %>% complete(time, name)
+frogger_tidy
+```
+
+```{r}
+# Use `fill()` to fill down the name variable in the frogger dataset
+frogger %>% tidyr::fill(name)
+```
+
+```{r}
+frogger %>% 
+  fill(name) %>%
+  complete(name,time)
+```
+
+#### Missing data dependence
+
+* **MCAR**: Missing Completely at Random.
+  + missingness has no association with any data you have observed or not observed
+  + Imputation is advisable
+  + deleting observations may reduce the sample size, limiting inference, but will not bias.
+* **MAR**: Missing at Random
+  + missingness depends on data observed, but not data unobserved
+  + Should be imputing data
+  + deletion is not advisable and may lead to bias
+* **MNAR**: Missing Not at Random
+  + missingness of the response is related to an unobserved value relevant to the assessment of interest.
+  + data will be biased by deletion and imputation
+  + inference can be limited, proceed with caution
+  
+```{r}
+load( file='oceanbuoys.rda' )
+glimpse( oceanbuoys )
+# Arrange by year
+oceanbuoys %>% arrange(year) %>% vis_miss()
+
+# Arrange by latitude
+oceanbuoys %>% arrange(latitude) %>% vis_miss()
+
+# Arrange by wind_ew (wind east west)
+oceanbuoys %>% arrange(wind_ew) %>% vis_miss()
+```
+```{r}
+gg_miss_var( oceanbuoys, facet = year)
+```
 
 
 ### Testing missing relationships
 
+#### Tools to explore missing data dependence
+
+`as_shadow()` to explore missingness  
+
+* Coordinated names: shadow matrix inherits feature labels the '_NA'
+* Clear Values: binary missing or !missing
+
+`bind_shadow()` or `nabular()` to bind the shadow mat with the data == **nabular data** (a mix of `NA` and tabular data). This format is useful to do things like calculate summary statistics based on the missingness of a feature
+
+```{r}
+airquality %>%
+  bind_shadow() %>%
+  group_by( Ozone_NA ) %>%
+  summarise( mean = mean( Wind ) )
+```
+
+Create Nabular Data
+```{r}
+# Create shadow matrix data with `as_shadow()`
+obs <- as_shadow( oceanbuoys )
+head( obs )
+
+# Create nabular data by binding the shadow to the data with `bind_shadow()`
+bob <- bind_shadow( oceanbuoys )
+dim( bob )
+
+# Bind only the variables with missing values by using bind_shadow(only_miss = TRUE)
+bob_om <- bind_shadow( oceanbuoys, only_miss = TRUE)
+dim( bob_om )
+```
+
+Use nabular data to calculate some summary statistics about other features:
+```{r}
+# `bind_shadow()` and `group_by()` humidity missingness (`humidity_NA`)
+oceanbuoys %>%
+  bind_shadow() %>%
+  group_by( humidity_NA ) %>% 
+  summarize(wind_ew_mean = mean(wind_ew), # calculate mean of wind_ew
+            wind_ew_sd = sd(wind_ew)) # calculate standard deviation of wind_ew
+  
+# Repeat this, but calculating summaries for wind north south (`wind_ns`).
+oceanbuoys %>%
+  bind_shadow() %>%
+  group_by(humidity_NA) %>%
+  summarize(wind_ns_mean = mean(wind_ns),
+            wind_ns_sd = sd(wind_ns))
+```
+
+Add information about to summarize the missingness of a dataset
+```{r}
+# How many NAs are in a feature?
+
+# Summarize wind_ew by the missingness of `air_temp_c_NA`
+oceanbuoys %>% 
+  bind_shadow() %>%
+  group_by(air_temp_c_NA) %>%
+  summarize(wind_ew_mean = mean(wind_ew),
+            wind_ew_sd = sd(wind_ew),
+            n_obs = n())
+
+# Summarize wind_ew by missingness of `air_temp_c_NA` and `humidity_NA`
+oceanbuoys %>% 
+  bind_shadow() %>%
+  group_by(air_temp_c_NA, humidity_NA) %>%
+  summarize(wind_ew_mean = mean(wind_ew),
+            wind_ew_sd = sd(wind_ew),
+            n_obs = n())
+```
+
+
+#### Visualizing missingness across one variable
+Exploring conditional missings w/`ggplot`  
+
+* How to use nabular data to explore how values change according to other values going missing
+* `ggplot2` visualizations:
+  + density plots
+  + box plots
+  + etc.
+  
+```{r}
+ggplot( airquality,
+        aes( x = Temp ) ) +
+  geom_density()
+```
+
+Create nabular data:
+```{r}
+airquality %>%
+  bind_shadow() %>%
+  ggplot( aes( x = Temp,
+               color = Ozone_NA ) ) +
+  geom_density()
+```
+The values of Temperature do not change much when data for Ozone are present or `NA`  
+
+Here is a feceted versions:
+```{r}
+airquality %>%
+  bind_shadow() %>%
+  ggplot( aes( x = Temp ) ) +
+  geom_density() +
+  facet_wrap( ~Ozone_NA )
+```
+
+Another look with facetted scatter plots. This gives an idea of how sparce `NA` data is compared to when the feature is present.
+```{r}
+airquality %>%
+  bind_shadow() %>%
+  ggplot( aes( x = Temp,
+               y = Wind ) ) +
+  geom_point() +
+  facet_wrap( ~Ozone_NA )
+```
+
+
+
+Can make the same point, perhaps more obvious, with a box plot.
+```{r}
+airquality %>%
+  bind_shadow() %>%
+  ggplot( aes( x = Ozone_NA,
+               y = Temp ) ) +
+  geom_boxplot()
+```
+This shows how close the medians of the two distributions are.  
+
+Visualizing missingness with color:
+```{r}
+airquality %>%
+  bind_shadow() %>%
+  ggplot( aes( x = Temp,
+               y = Wind,
+               color = Ozone_NA ) ) +
+  geom_point()
+```
+
+Visualize the missingness of two features
+```{r}
+airquality %>%
+  bind_shadow() %>%
+  ggplot( aes( x = Temp,
+               color = Ozone_NA ) ) +
+  geom_density() +
+  facet_wrap( ~ Solar.R_NA )
+```
+
+There doesn't appear to much much difference in the distributions of Temperature when Solar.R info is in a given record. However, when Solar.R is missing, the temperatures are low.
+
+Now to take a look at `oceanbuoys`
+```{r}
+# First explore the missingness structure of `oceanbuoys` using `vis_miss()`
+vmob <- vis_miss(oceanbuoys) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+# Explore the distribution of `wind_ew` for the missingness  
+# of `air_temp_c_NA` using  `geom_density()`
+bsob <- bind_shadow(oceanbuoys) %>%
+  ggplot(aes(x = wind_ew, 
+             color = air_temp_c_NA)) + 
+  geom_density()
+
+# Explore the distribution of sea temperature for the  
+# missingness of humidity (humidity_NA) using  `geom_density()`
+bsob2 <- bind_shadow(oceanbuoys) %>%
+  ggplot(aes(x = sea_temp_c,
+             color = humidity_NA)) + 
+  geom_density()
+
+grid.arrange( vmob, bsob, bsob2, ncol = 1 )
+```
+
+```{r}
+# Explore the distribution of wind east west (wind_ew) for the missingness of air temperature 
+# using geom_density() and faceting by the missingness of air temperature (air_temp_c_NA).
+ob1 <- oceanbuoys %>%
+  bind_shadow() %>%
+  ggplot(aes(x = wind_ew)) + 
+  geom_density() + 
+  facet_wrap(~air_temp_c_NA)
+
+# Build upon this visualization by coloring by the missingness of humidity (humidity_NA).
+ob2 <- oceanbuoys %>%
+  bind_shadow() %>%
+  ggplot(aes(x = wind_ew,
+             color = humidity_NA)) + 
+  geom_density() + 
+  facet_wrap(~air_temp_c_NA)
+
+grid.arrange( ob1, ob2, ncol = 1 )
+```
+
+```{r}
+# Explore the distribution of wind east west (`wind_ew`) for  
+# the missingness of air temperature using  `geom_boxplot()`
+ob1 <- oceanbuoys %>%
+  bind_shadow() %>%
+  ggplot(aes(x = air_temp_c_NA,
+             y = wind_ew)) + 
+  geom_boxplot()
+
+# Build upon this visualization by faceting by the missingness of humidity (`humidity_NA`).
+ob2 <- oceanbuoys %>%
+  bind_shadow() %>%
+  ggplot(aes(x = air_temp_c_NA,
+             y = wind_ew)) + 
+  geom_boxplot() + 
+  facet_wrap(~humidity_NA)
+
+grid.arrange( ob1, ob2, ncol = 1 )
+```
+
+
+#### Visualizing missingness across two variables
+The problem with visualizing missing data in 2D (e.g. scatterplot) is that rows with missing values are removed.
+`ggplot2` is very kind to give a warning when rows are dropped:
+```{r}
+ggplot( airquality,
+        aes( x = Ozone,
+             y = Solar.R ) ) +
+  geom_point()
+```
+
+`geom_miss_point()` visualizes missing data by placing them in the margins of a figure
+```{r}
+ggplot( airquality,
+        aes( x = Ozone,
+             y = Solar.R ) ) +
+  geom_miss_point()
+```
+
+```{r}
+ggplot( airquality,
+        aes( x = Wind,
+             y = Ozone ) ) +
+  geom_miss_point() +
+  facet_wrap( ~ Month )
+```
+
+Visualize missingness with another missing variable
+```{r}
+airquality %>%
+  bind_shadow() %>%
+  ggplot( aes( x = Wind,
+               y = Ozone ) ) +
+  geom_miss_point() +
+  facet_wrap( ~ Solar.R_NA )
+```
+
+```{r}
+# Explore the missingness in wind and air temperature, and  
+# display the missingness using `geom_miss_point()`
+ob1 <- ggplot(oceanbuoys,
+       aes(x = wind_ew,
+           y = air_temp_c)) + 
+  geom_miss_point()
+
+# Explore the missingness in humidity and air temperature,  
+# and display the missingness using `geom_miss_point()`
+ob2 <- ggplot(oceanbuoys,
+       aes(x = humidity,
+           y = air_temp_c)) + 
+  geom_miss_point()
+
+grid.arrange( ob1, ob2, ncol = 2 )
+```
+
+```{r}
+# Explore the missingness in wind and air temperature, and display the 
+# missingness using `geom_miss_point()`. Facet by year to explore this further.
+ob1 <- ggplot(oceanbuoys,
+       aes(x = wind_ew,
+           y = air_temp_c)) + 
+  geom_miss_point() + 
+  facet_wrap(~year)
+
+# Explore the missingness in humidity and air temperature, and display the 
+# missingness using `geom_miss_point()` Facet by year to explore this further.
+ob2 <- ggplot(oceanbuoys,
+       aes(x = humidity,
+           y = air_temp_c)) + 
+  geom_miss_point() + 
+  facet_wrap(~year)
+
+grid.arrange( ob1, ob2, ncol = 1 )
+```
+
+```{r}
+# Use geom_miss_point() and facet_wrap to explore how the missingness  
+# in wind_ew and air_temp_c is different for missingness of humidity
+bind_shadow(oceanbuoys) %>%
+  ggplot(aes(x = wind_ew,
+           y = air_temp_c)) + 
+  geom_miss_point() + 
+  facet_wrap(~humidity_NA)
+
+# Use geom_miss_point() and facet_grid to explore how the missingness in wind_ew and air_temp_c 
+# is different for missingness of humidity AND by year - by using `facet_grid(humidity_NA ~ year)`
+bind_shadow(oceanbuoys) %>%
+  ggplot(aes(x = wind_ew,
+             y = air_temp_c)) + 
+  geom_miss_point() + 
+  facet_grid(humidity_NA~year)
+```
 
 
 ### Connecting the dots (Imputation)
 
+#### Filling in the blanks
+Performing and tracking imputation  
 
+Using imputations to understand data structure. Visualizing and exploring imputed values  
 
+* Imputing data to explore missingness
+* tracking missing values
+* visualize imputed values against data
+
+`impute_below()` imputes below to minimum vaue in the variable
+```{r}
+impute_below( c( 5,6,7,NA,9,10 ) )
+```
+
+impute below to satisfy a conditional
+```{r}
+summary( pedestrian )
+pedestrian_imp <- impute_below_if( pedestrian, is.numeric )
+summary( pedestrian_imp )
+```
+
+Specify features to be imputed
+```{r}
+glimpse( oceanbuoys )
+miss_var_summary( oceanbuoys )
+oceanbuoys_imp <- impute_below_at( oceanbuoys, vars( humidity, air_temp_c, sea_temp_c ) )
+miss_var_summary( oceanbuoys_imp )
+```
+
+```{r}
+glimpse( dat_hw )
+dat_hw_imp <- impute_below_all( dat_hw )
+
+ob1 <- ggplot(dat_hw_imp,
+       aes(x = weight,
+           y = height)) + 
+  geom_point()
+
+ob1
+```
+
+Tracking missing values can be handles by using `bind_shadows()`:
+```{r}
+dat_hw_imp <- bind_shadow( dat_hw ) %>% impute_below_all()
+head( dat_hw_imp )
+```
+
+```{r}
+aq_imp <- airquality %>%
+  bind_shadow() %>%
+  impute_below_all() %>%
+  ggplot( aes( x = Ozone,
+               fill = Ozone_NA ) ) +
+  geom_histogram()
+aq_imp
+```
+
+Split the plot by missingness:
+```{r}
+aq_imp <- airquality %>%
+  bind_shadow() %>%
+  impute_below_all() %>%
+  ggplot( aes( x = Ozone,
+               fill = Ozone_NA ) ) +
+  geom_histogram() +
+  facet_wrap( ~ Solar.R_NA )
+aq_imp
+```
+
+Visualize imputed value against data values using scatter plots:
+```{r}
+aq_imp <- airquality %>%
+  bind_shadow() %>%
+  add_label_shadow() %>%
+  impute_below_all() %>%
+  ggplot( aes( x = Ozone,
+               y = Solar.R,
+               color = any_missing ) ) +
+  geom_point()
+aq_imp
+```
+This successfully recreates the figure rendered by a call to `geom_miss_point()`
+
+```{r}
+# Impute the oceanbuoys data below the range using `impute_below`.
+ocean_imp <- impute_below_all(oceanbuoys)
+
+# Visualize the new missing values
+ggplot(ocean_imp, 
+       aes(x = wind_ew, y = air_temp_c)) +  
+  geom_point()
+
+# Impute and track data with `bind_shadow`, `impute_below_all`, and `add_label_shadow`
+ocean_imp_track <-  bind_shadow(oceanbuoys) %>% impute_below_all() %>% add_label_shadow()
+
+# Look at the imputed values
+ggplot(ocean_imp_track, aes(x = wind_ew, y = air_temp_c, color = any_missing ) ) +
+geom_point()
+
+ocean_imp_track
+```
+
+```{r}
+# Impute and track the missing values
+ocean_imp_track <- bind_shadow(oceanbuoys) %>% 
+  impute_below_all() %>% 
+  add_label_shadow()
+
+# Visualize the missingness in wind and air temperature,  
+# coloring missing air temp values with air_temp_c_NA
+ggplot(ocean_imp_track, 
+       aes(x = wind_ew, y = air_temp_c, color = air_temp_c_NA)) + 
+  geom_point()
+
+# Visualize humidity and air temp, coloring any missing cases using the variable any_missing
+ggplot(ocean_imp_track, 
+       aes(x = humidity, y = air_temp_c, color = any_missing)) +  
+  geom_point()
+```
+
+```{r}
+# Explore the values of air_temp_c, visualizing the amount of missings with `air_temp_c_NA`.
+p <- ggplot(ocean_imp_track, aes(x = air_temp_c, fill = air_temp_c_NA)) +  geom_histogram()
+
+# Expore the missings in humidity using humidity_NA
+p2 <- ggplot(ocean_imp_track,  aes(x = humidity, fill = humidity_NA)) + geom_histogram()
+
+# Explore the missings in air_temp_c according to year, using `facet_wrap(~year)`.
+p + facet_wrap(~year)
+
+# Explore the missings in humidity according to year, using `facet_wrap(~year)`.
+p2 + facet_wrap(~year)
+```
+
+#### What makes good imputation?
+
+To understand good imputations, let's spend some time taking a look at bad imputations:  
+Imputation by the mean value of the data is particularly bad.  
+
+Imputing by the mean is bad because it artifucially increases the mean while decreasing the variance of the dataset as the following excersizes demonstrate:
+
+```{r}
+aq_imp <- airquality %>%
+  bind_shadow(only_miss = TRUE) %>% #bind only features with missing values
+  add_label_shadow() %>%
+  impute_mean_all() %>%
+  ggplot( aes( x = Ozone_NA,
+               y = Ozone ) ) +
+  geom_boxplot()
+aq_imp
+```
+
+The median is lower for the 'not missing' group than the NA group.
+
+```{r}
+aq_imp <- airquality %>%
+  bind_shadow(only_miss = TRUE) %>% #bind only features with missing values
+  add_label_shadow() %>%
+  impute_mean_all() %>%
+  ggplot( aes( x = Ozone,
+               y = Solar.R,
+               color = any_missing ) ) +
+  geom_point()
+aq_imp
+```
+
+Exploring imputations for many variables:
+```{r}
+aq_imp <- airquality %>%
+  bind_shadow() %>% #bind only features with missing values
+  impute_mean_all()
+
+aq_imp_long <- shadow_long( aq_imp,
+                            Ozone,
+                            Solar.R )
+head( aq_imp_long )
+```
+
+...and now to visualize:
+```{r}
+ggplot( aq_imp_long,
+        aes( x = value,
+             fill = value_NA ) ) +
+  geom_histogram() +
+  facet_wrap( ~ variable )
+```
+
+```{r}
+# Impute the mean value and track the imputations 
+ocean_imp_mean <- bind_shadow(oceanbuoys) %>% 
+  impute_mean_all() %>% 
+  add_label_shadow()
+
+# Explore the mean values in humidity in the imputed dataset
+ggplot(ocean_imp_mean, 
+       aes(x = humidity_NA, y = humidity)) + 
+  geom_boxplot()
+
+# Explore the values in air temperature in the imputed dataset
+ggplot(ocean_imp_mean, 
+       aes(x = air_temp_c_NA, y = air_temp_c)) + 
+  geom_boxplot()
+```
+
+```{r}
+# Explore imputations in air temperature and humidity,  
+# coloring by the variable, any_missing
+ggplot(ocean_imp_mean, 
+       aes(x = air_temp_c, y = humidity, color = any_missing)) + 
+  geom_point()
+
+# Explore imputations in air temperature and humidity,  
+# coloring by the variable, any_missing, and faceting by year
+ggplot(ocean_imp_mean, 
+       aes(x = air_temp_c, y = humidity, color = any_missing)) + 
+  geom_point() +  
+  facet_wrap(~year)
+```
+
+```{r}
+# Gather the imputed data 
+ocean_imp_mean_gather <- shadow_long(ocean_imp_mean,
+                                     humidity,
+                                     air_temp_c)
+# Inspect the data
+head( ocean_imp_mean_gather )
+
+# Explore the imputations in a histogram 
+
+ggplot( ocean_imp_mean_gather,
+        aes( x = as.numeric(value),
+             fill = value_NA ) ) +
+  geom_histogram() +
+  facet_wrap( ~variable )
+```
+
+#### Performing imputations
+Imputing using a linear regression model.  
+Try `simputation`  
+Using `impute_lm` from `simputation` is a powerfl way to impute values for a dataset. However, the model used for imputation needs the same regorous evaluation that statistical model approaches demand.
+
+```{r}
+oceanbuoys_lmimp <- bind_shadow( oceanbuoys, only_miss = TRUE ) %>%
+  add_label_shadow() %>%
+  impute_lm( humidity ~ air_temp_c + wind_ew )
+head( oceanbuoys_lmimp )
+```
+
+```{r}
+airquality_type <- airquality %>% mutate( Solar.R = as.double( Solar.R ),
+                                           Ozone = as.double( Ozone ) )
+aq_imp_lm <- airquality_type %>% 
+  bind_shadow() %>%
+  add_label_shadow() %>%
+  impute_lm( Solar.R ~ Wind + Temp + Month ) %>%
+  impute_lm( Ozone ~ Wind + Temp + Month )
+head( aq_imp_lm )
+```
+
+The `bind_shadow()` & `add_labels_missings()` methods are important for tracking which values were imputed. The imputed values for the last example are visualized below:
+```{r}
+ggplot( aq_imp_lm,
+        aes( x = Solar.R,
+             y = Ozone,
+             color = any_missing ) ) +
+  geom_point() 
+```
+
+Build other linear model imputations and compare the results:
+```{r}
+aq_imp_lm_small <- airquality_type %>% 
+  bind_shadow() %>%
+  add_label_shadow() %>%
+  impute_lm( Solar.R ~ Wind + Temp ) %>%
+  impute_lm( Ozone ~ Wind + Temp )
+
+aq_imp_lm_large <- airquality_type %>% 
+  bind_shadow() %>%
+  add_label_shadow() %>%
+  impute_lm( Solar.R ~ Wind + Temp + Month + Day ) %>%
+  impute_lm( Ozone ~ Wind + Temp + Month + Day )
+```
+
+Bind the models, so that we can build visualizations:
+```{r}
+bound_models <- bind_rows( small = aq_imp_lm_small,
+                           medium = aq_imp_lm,
+                           large = aq_imp_lm_large,
+                           .id = 'imp_model' )
+head( bound_models )
+```
+
+```{r}
+bound_models_gather <- bound_models %>%
+  select( Ozone, Solar.R, any_missing, imp_model ) %>%
+  gather( key = 'variable', value = 'value', -any_missing, -imp_model )
+head( bound_models_gather )
+```
+
+```{r}
+ggplot( bound_models_gather,
+        aes( x = imp_model,
+             y = value,
+             color = imp_model ) ) +
+  geom_boxplot() +
+  facet_wrap( ~variable )
+```
+
+```{r}
+# Impute humidity and air temperature using wind_ew and wind_ns, and track missing values
+ocean_imp_lm_wind <- oceanbuoys %>% 
+    bind_shadow() %>%
+    impute_lm(air_temp_c ~ wind_ew + wind_ns) %>% 
+    impute_lm(humidity ~ wind_ew + wind_ns) %>%
+    add_label_shadow()
+    
+# Plot the imputed values for air_temp_c and humidity, colored by missingness
+ggplot(ocean_imp_lm_wind, 
+       aes(x = air_temp_c, y = humidity, color = any_missing)) + 
+  geom_point()
+```
+
+```{r}
+# Bind the models together 
+bound_models <- bind_rows(mean = ocean_imp_mean,
+                          lm_wind = ocean_imp_lm_wind,
+                          .id = "imp_model")
+
+# Inspect the values of air_temp and humidity as a scatter plot
+ggplot(bound_models, 
+       aes(x = air_temp_c, 
+           y = humidity, 
+           color = any_missing)) +
+  geom_point() + 
+  facet_wrap(~imp_model)
+```
+
+```{r}
+# Build a model adding year to the outcome
+ocean_imp_lm_wind_year <- bind_shadow(oceanbuoys) %>%
+  impute_lm(air_temp_c ~ wind_ew + wind_ns + year) %>%
+  impute_lm(humidity ~ wind_ew + wind_ns + year) %>%
+  add_label_shadow()
+
+# Bind the mean, lm_wind, and lm_wind_year models together
+bound_models <- bind_rows(mean = ocean_imp_mean,
+                          lm_wind = ocean_imp_lm_wind,
+                          lm_wind_year = ocean_imp_lm_wind_year,
+                          .id = "imp_model")
+bound_models$imp_model_f <- factor( bound_models$imp_model, levels = c('mean','lm_wind','lm_wind_year'))
+
+# Explore air_temp and humidity, coloring by any missings, and faceting by imputation model
+ggplot(bound_models, aes(x = air_temp_c, y = humidity, color = any_missing)) + 
+  geom_point() + facet_wrap(~imp_model_f)
+```
+
+#### Evaluating imputations and models
+Assessing inference from imputed data in a modelling context.  
+
+Compare the imputated data with a Complete case analysis (only uses rows with no missing values)
+
+```{r}
+#Complete Case Analysis.
+aq_cc <- airquality %>%
+  na.omit() %>%
+  bind_shadow() %>%
+  add_label_shadow()
+#dim( aq_cc )
+
+#Impute the data with a linear model
+aq_imp_lm <- bind_shadow( airquality_type ) %>%
+  add_label_shadow() %>%
+  impute_lm( Ozone ~ Temp + Wind + Month + Day ) %>%
+  impute_lm( Solar.R ~ Temp + Wind + Month + Day )
+#dim( aq_imp_lm )
+
+#Bind the different datasets together
+bound_models <- bind_rows( cc = aq_cc,
+                           imp_lm = aq_imp_lm,
+                           .id = 'imp_model' )
+head( bound_models )
+```
+
+Now that the data is formatted, fit a linear model to each of the datasets
+```{r message=FALSE, warning=FALSE}
+model_summary <- bound_models %>%
+  group_by( imp_model ) %>%
+  nest() %>% #colapses the data such that each row represents a dataset
+  mutate( mod = map( data,
+                     ~lm( Temp ~ Ozone + Solar.R + Wind + Temp + Day + Month,
+                          data = . ) ), #fit a linear model to each row
+          res = map( mod, residuals ), #get the residuals
+          pred = map( mod, predict ), #get a model prediction
+          tidy = map( mod, broom::tidy ) ) #get the coefficients too
+model_summary
+```
+
+Explore the results from both approaches to fit a linear model to the data (with & w/out imputation)
+```{r}
+model_summary %>%
+  select( imp_model,
+          tidy ) %>%
+  unnest(cols = c( tidy ) ) 
+```
+
+```{r}
+model_summary %>%
+  select( imp_model,
+          res ) %>%
+  unnest(cols = c( res ) ) %>%
+  ggplot( aes( x = res,
+               fill = imp_model ) ) +
+  geom_histogram( position = 'dodge' )
+```
+
+Explore the predictions in the data
+```{r}
+model_summary %>%
+  select( imp_model,
+          pred ) %>%
+  unnest(cols = c( pred ) ) %>%
+  ggplot( aes( x = pred,
+               fill = imp_model ) ) +
+  geom_histogram( position = 'dodge' )
+```
+
+and for the `oceanbouys` dataset
+```{r}
+#Complete Case Analysis.
+ocean_cc <- oceanbuoys %>%
+  na.omit() %>%
+  bind_shadow() %>%
+  add_label_shadow()
+
+# Create an imputed dataset using a linear models
+ocean_imp_lm_all <- bind_shadow(oceanbuoys) %>%
+  add_label_shadow() %>%
+  impute_lm(sea_temp_c ~ wind_ew + wind_ns + year + latitude + longitude) %>%
+  impute_lm(air_temp_c ~ wind_ew + wind_ns + year + latitude + longitude) %>%
+  impute_lm(humidity ~ wind_ew + wind_ns + year + latitude + longitude)
+
+# Bind the datasets
+bound_models <- bind_rows(cc = ocean_cc,
+                          imp_lm_wind = ocean_imp_lm_wind,
+                          imp_lm_all = ocean_imp_lm_all,
+                          .id = "imp_model")
+# Look at the models
+glimpse( bound_models )
+```
+
+```{r}
+# Create the model summary for each dataset
+model_summary <- bound_models %>% 
+  group_by(imp_model) %>%
+  nest() %>%
+  mutate(mod = map(data, ~lm(sea_temp_c ~ air_temp_c + humidity + year, data = .)),
+         res = map(mod, residuals),
+         pred = map(mod, predict),
+         tidy = map(mod, broom::tidy ))
+
+# Explore the coefficients in the model
+model_summary %>% 
+	select(imp_model,tidy) %>% 
+	unnest(cols = c( tidy ))
+
+```
+
+The `imp_lm_all` model gives the highest estimate for `air_temp_c`
+
+#### Final Lesson
+
+### Some Other Datasets to play with
+```{r}
+ozoneNA_url <- 'https://raw.githubusercontent.com/njtierney/user2018-missing-data-tutorial/master/ozoneNA.csv'
+ecological_url <- 'https://raw.githubusercontent.com/njtierney/user2018-missing-data-tutorial/master/ecological.csv'
+```
 <br><br><br>
