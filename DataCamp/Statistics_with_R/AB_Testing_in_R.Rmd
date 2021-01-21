@@ -1,0 +1,497 @@
+---
+title: 'A/B Testing in `R`'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+library( tidyverse )
+library( lubridate )
+library( scales )
+library( powerMediation )
+library( broom )
+```
+
+### Mini case study in A/B Testing
+
+#### Into
+A/B testing is not something that is done just once. It is an iterative proces that is cycled over constantly in an effeort to optimize conversion rates etc.  
+
+Think of New Ideas to Test $\longrightarrow$ Run Experiments $\longrightarrow$ Statistically Analyze Results $\longrightarrow$ Update to the Winning Idea $\longrightarrow$ rinse $\longrightarrow$ lather$\longrightarrow$ repeat!
+
+**Clickthrough**: did someone click the thing?  
+**Clickthrough Rate**: $\frac{ \mbox{# site visitors who performed an action}}{\mbox{total # site visitors}}$
+
+An purrrrfect example of A/B testing:  
+
+* **Question**: will changing the hompage photo result in more 'ADOPT TODAY' clicks?
+* **Hypothesis**: using a photo of a cat wearing a hat will result in more 'ADOPT TODAY' clicks
+* **Dependent variable**: clicked 'ADOPT TODAY' button or not
+* **Independent variable**: homepage photo
+
+```{r}
+url <- 'https://assets.datacamp.com/production/repositories/2292/datasets/4407050e9b8216249a6d5ff22fd67fd4c44e7301/click_data.csv'
+click_data <- read_csv( url )
+glimpse( click_data )
+```
+
+EDA `click_data`
+```{r}
+# Find oldest and most recent date
+min(click_data$visit_date)
+max(click_data$visit_date)
+```
+
+#### Baseline Conversion Rates
+What is the current value (e.g. clickrate) before any experimental variable has been manipulated?  
+Need to know a baseline for comparison, otherwise, there is no way of knowing if the experimental manipulation had an effect or not.  
+
+find the current conversion rate:
+```{r}
+click_data %>%
+  summarize( conversion_rate = mean( clicked_adopt_today ) )
+```
+there is an overall ~27% conversion rate for the years' worth of data  
+
+now look at the clickthrough rate as a function of month to explore seasonality effects:
+```{r}
+glimpse( click_data )
+click_data %>%
+  mutate( month = format( visit_date, '%m' ) ) %>%
+  group_by( month ) %>%
+  summarise( conversion_rate = mean( clicked_adopt_today ) )
+```
+
+alternatively, the `month()` function from `lubridate` can be used:
+```{r}
+click_data %>%
+  group_by( month = month( visit_date ) ) %>%
+  summarise( conversion_rate = mean( clicked_adopt_today ) )
+```
+
+let's visualize this result:
+```{r}
+month_abs <- c( 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
+click_data %>%
+  group_by( month = month( visit_date ) ) %>%
+  summarise( conversion_rate = mean( clicked_adopt_today ) ) %>%
+  ggplot( aes( x = month, y = conversion_rate ) ) +
+  geom_path() +
+  geom_line() +
+  scale_x_continuous( breaks = c(1:12), labels = month_abs )
+```
+From this plot, we see that conversion rates are not steady across the months of the year. Rather, there is a peak during the summer months culminating in August as well as a peak in December. 
+
+How about days of the week?
+```{r}
+wday_lab <- c( 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun' )
+# Calculate the mean conversion rate by day of the week
+click_data %>%
+  group_by(wday = wday(visit_date)) %>%
+  summarize(conversion_rate = mean(clicked_adopt_today)) %>%
+  ggplot( aes( x = wday, y = conversion_rate ) ) +
+  geom_path() +
+  geom_line() +
+  scale_x_continuous( breaks = c(1:7), labels = wday_lab ) +
+  ylim( c( 0, 0.5 ) )
+```
+We don't observe much difference in conversion rate as a function of day of the week.  
+
+How about by week?
+```{r}
+click_data %>%
+  group_by(wk = week(visit_date)) %>%
+  summarize(conversion_rate = mean(clicked_adopt_today)) %>%
+  ggplot( aes( x = wk, y = conversion_rate ) ) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous( limits = c( 0,1 ), labels = percent ) +
+  scale_x_continuous( breaks = seq( 0,55, by=5 ), labels = month_abs )
+```
+
+#### Experimental Design and Power Analysis
+How long do we need to run our experiment?
+
+**Power Analysis**  
+
+* **statistical test**: what statistical test you plan on running
+* **baseline value**: value for the current control condition
+* **desired value**: expected value for the test condition
+* **proportion of the data**: from the test condition (ideally 0.5)
+* **significance threshold/$\alpha$**: level where effect is significant (generally 0.05)
+* **power/$1-\beta$**: probability correctly rejecting null hypothesis (generally 0.8)
+
+```{r}
+total_sample_size <- SSizeLogisticBin( p1 = 0.2, #baseline
+                                       p2 = 0.3, #our expected guess for the test condition
+                                       B = 0.5, #typical val
+                                       alpha = 0.05, #typical val
+                                       power = 0.8 ) #typical val
+res <- paste( 'Total Sample Size:', total_sample_size, 
+              '\nSize for each condition:', total_sample_size/2 )
+cat( res, sep = '\n' )
+```
+
+```{r}
+# Compute and look at sample size for experiment in August
+total_sample_size <- SSizeLogisticBin(p1 = 0.54, #get the value for August
+                                      p2 = 0.64,
+                                      B = 0.5,
+                                      alpha = 0.05,
+                                      power = 0.8)
+res <- paste( 'Total Sample Size:', total_sample_size, 
+              '\nSize for each condition:', total_sample_size/2 )
+cat( res, sep = '\n' )
+```
+
+Compare the above result with a predicted increase in clickthrough of 10% with that of the 5%
+```{r}
+# Compute and look at sample size for experiment in August with a 5 percentage point increase
+total_sample_size <- SSizeLogisticBin(p1 = 0.54,
+                                      p2 = 0.59,
+                                      B = 0.5,
+                                      alpha = 0.05,
+                                      power = 0.8)
+res <- paste( 'Total Sample Size:', total_sample_size, 
+              '\nSize for each condition:', total_sample_size/2 )
+cat( res, sep = '\n' )
+```
+
+
+### Mini case study in A/B Testing II
+
+#### Analyzing Results
+
+loading the experimental data:
+```{r}
+url <- 'https://assets.datacamp.com/production/repositories/2292/datasets/52b52cb1ca28ce10f9a09689325c4d94d889a6da/experiment_data.csv'
+experimental_data <- read_csv( url )
+glimpse( experimental_data )
+```
+
+look at the conversion rate for each condition:
+```{r}
+experimental_data %>%
+  group_by( condition ) %>%
+  summarise( conversion_rate = mean( clicked_adopt_today ) )
+```
+
+look at conversion rate as a function of visit date:
+```{r}
+experimental_data_sum <- experimental_data %>%
+  group_by( visit_date, condition ) %>%
+  dplyr::summarize( conversion_rate = mean( clicked_adopt_today ) )
+head( experimental_data_sum )
+```
+
+Now visualize:
+```{r}
+ggplot( experimental_data_sum,
+        aes( x = visit_date,
+             y = conversion_rate,
+             color = condition,
+             group = condition ) ) +
+  geom_point() +
+  geom_line()
+```
+
+Generally, the test condition is higher than the control group on any given day. Next to support this observation with statistics.
+```{r}
+#logistic regression
+glm( clicked_adopt_today ~ condition,
+     family = 'binomial',
+     data = experimental_data ) %>%
+  tidy()
+```
+The p-value for condition is very small (much smaller that conventional cutoffs: 0.05, 0.01), so we can reject the null hypothesis that there is no difference between groups. Additionally, the estimate for the test condition is ~1.14, therefore the test condition's mean is ~1.14 greater than the control condition.  
+
+
+
+#### Designing Follow-up Experiments
+
+Tips for desiging new experiments:  
+
+* Build several small follow-up experiments. But make sure they are unique testable ideas that introduce 1 measurable change.
+* avoid confounding variables
+* test small changes
+
+For the previous example the test condition's conversion rate was 39%. Let's find the sample size we would need for the next test condition where we estimate that the conversion rate will increase to 59%:  
+```{r}
+# Run logistic regression power analysis
+total_sample_size <- SSizeLogisticBin(p1 = 0.39,
+                                      p2 = 0.59,
+                                      B = 0.5,
+                                      alpha = 0.05,
+                                      power = 0.8)
+total_sample_size
+```
+
+#### Pre-follow-up Experiment Assumptions
+
+revisit the old data before executing a follow up experiment...
+```{r eval = FALSE}
+# Compute monthly summary
+eight_month_checkin_data_sum <- eight_month_checkin_data %>%
+  mutate(month_text = month(visit_date, label = TRUE)) %>%
+  group_by(month_text, condition) %>%
+  summarize(conversion_rate = mean( clicked_adopt_today ))
+
+# Plot month-over-month results
+ggplot(eight_month_checkin_data_sum,
+       aes(x = month_text,
+           y = conversion_rate,
+           color = condition,
+           group = condition)) +
+  geom_point(size = 4) +
+  geom_line( lwd = 1) +
+  scale_y_continuous(limits = c(0, 1),
+                     labels = percent) +
+  labs(x = "Month",
+       y = "Conversion Rate")
+```
+conversion rates are consistently higher
+
+computing the differences in conversion rates for each month  
+(i do this here with the original dataset, but the course uses a different 8 month projection dataset which was not made available)
+```{r}
+experimental_data_diff <- experimental_data %>%
+  mutate( month_text = wday( visit_date, label = TRUE)) %>%
+  group_by( month_text, condition ) %>%
+  summarize( conversion_rate = mean( clicked_adopt_today )) %>%
+  spread( condition, conversion_rate ) %>%
+  mutate( condition_diff = test - control )
+
+head( experimental_data_diff ) 
+```
+
+What are the summary statistics for the differences in conversion rates?
+```{r}
+summary( experimental_data_diff$condition_diff )
+mean( experimental_data_diff$condition_diff )
+sd( experimental_data_diff$condition_diff )
+```
+The 8 month dataset presented in the course videos results in a 19% mean difference in conversion rate with 4% standard deviation when broken down by month. Those numbers are fairly consistent with the results above.
+
+For comparison, here we look at the difference between two different years worth of data for the control condition (dataset not available):
+```{r eval=FALSE}
+# Compute difference over time
+no_hat_data_diff <- no_hat_data_sum %>%
+  spread(year, conversion_rate) %>%
+  mutate(year_diff = `2018` - `2017`)
+no_hat_data_diff
+
+# Compute summary statistics
+mean(no_hat_data_diff$year_diff, na.rm = TRUE)
+sd(no_hat_data_diff$year_diff, na.rm = TRUE)
+```
+
+1) the conversion rate for the "no hat" condition in 2017 was 30% (or 0.3), and 2) the average difference between the "no hat" condition and the "cat hat" condition is 19% (0.19). Use this information to run an updated power analysis. assuming an increase of 15 percentage points (0.15) for the test condition.
+```{r}
+# Run power analysis for logistic regression
+total_sample_size <- SSizeLogisticBin(p1 = 0.49,
+                                      p2 = 0.64,
+                                      B = 0.5,
+                                      alpha = 0.05,
+                                      power = 0.8)
+total_sample_size
+```
+
+
+### Experimental Design in A/B Testing
+
+#### A/B Testing Research Questions
+
+**A/B Testing**: is the use of experimental design and statistics to compare two or more variants of a design. Generally, A/B testing is a term used to refer to testing web site design. However, it can be used to describe any situation that tests 2 different conditions.
+
+Uses for A/B testing:  
+
+* Conversion rates ( e.g. clicks or purchases )
+* Engagement ( e.g. sharing, 'like'ing )
+* Dropoff rate ( e.g. leaving the site )
+* Time spent on a website 
+
+```{r}
+url <- 'https://assets.datacamp.com/production/repositories/2292/datasets/b502094e5de478105cccea959d4f915a7c0afe35/data_viz_website_2018_04.csv'
+viz_website_2017 <- read_csv( url )
+glimpse( viz_website_2017 )
+```
+
+look at the average time spent on the homepage:
+```{r}
+viz_website_2017 %>%
+  summarise( mean( time_spent_homepage_sec ) )
+
+viz_website_2017 %>%
+  group_by( condition ) %>%
+  summarise( mean( time_spent_homepage_sec ) )
+
+viz_website_2017 %>%
+  group_by(condition) %>%
+  summarise(article_conversion_rate = mean(clicked_article),
+            like_conversion_rate = mean(clicked_like),
+            share_conversion_rate = mean(clicked_share))
+```
+
+```{r}
+# Compute 'like' click summary by condition
+viz_website_2017_like_sum <- viz_website_2017 %>%
+  group_by(condition) %>%
+  summarize(like_conversion_rate = mean(clicked_like))
+
+viz_website_2017_like_sum
+
+# Plot 'like' click summary by condition
+ggplot(viz_website_2017_like_sum,
+       aes(x = condition, y = like_conversion_rate, group = 1)) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(limits = c(0, 1), labels = percent)
+```
+
+```{r}
+
+month <- c( rep( c( 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' ), 2 ) )
+action <- c( rep( 'like', 12 ), rep( 'share', 12 ) )
+conversion_rate <- c( 0.197, 0.118, 0.148, 0.166, 0.212, 0.297, 0.404, 0.125, 0.153, 0.202,
+                      0.249, 0.294, 0.0516, 0.0113, 0.0192, 0.0296, 0.0501, 0.0701, 0.0203,
+                      0.0104, 0.0177, 0.0385, 0.0607, 0.0188 )
+viz_website_2017_like_share_sum <- data.frame( 'month' = month, 
+                                               'action' = action, 
+                                               'conversion_rate' = conversion_rate )
+glimpse( viz_website_2017_like_share_sum )
+```
+```{r}
+# Plot comparison of 'like'ing and 'sharing'ing an article
+ggplot(viz_website_2017_like_share_sum,
+       aes(x = month, y = conversion_rate, color = action, group = action)) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(limits = c(0,1), labels = percent)
+```
+People are much less likely to `share` an article than `like` it.
+
+#### Assumptions and Types of A/B Testing
+**Within vs Between** groups.  
+
+* **within** - each participant sees both conditions
+* **between** - different groups of participants see different conditions
+  + *Assumption*: there should be nothing qualitatively different between the two groups of participants so not to introduce any confounding variables.
+
+* **A/B** - compare a control and a test condition ( tips vs tools )
+* **A/A** - compare two groups of control condition ( tips(1) vs tips(2) ). this tests if the two groups are in fact from the same population and if the contol group really is stable. If you get a significant difference for the A/A test, then you are sampling the population wrong.
+* **A/B/N** - compare a control condition to any number of different test conditions (tips vs tools vs strategies )
+  + can be tempting to go after, but the statistics are more complicated and it requires more data
+
+
+#### Confounding Variables
+
+**Confounding Variable** - is an element of the environment that could affect your ability to find out the truth of an A/B experiment.
+
+```{r}
+condition <- c( rep( c( 'tips', 'tools' ), 56/2 ) )
+article_published <- c( rep( 'no', 28 ), rep( 'yes', 28 ) )
+visit_date <- c( sort( rep( seq(as.Date("2018-02-01"), by = "day", length.out = 28), 2 ) ) )
+like_conversion_rate <- c( 0.112, 0.0171, 0.109, 0.0143, 0.118, 0.00996, 0.0977, 
+                           0.0206, 0.101, 0.0262, 0.139, 0.0202, 0.115, 0.0206,
+                           0.141, 0.0265, 0.124, 0.0348, 0.135, 0.00815, 0.117,
+                           0.0304, 0.118, 0.0239, 0.108, 0.0193, 0.124, 0.00967,
+                           0.107, 0.0816, 0.123, 0.0510, 0.103, 0.0714, 0.119,
+                           0.0815, 0.136, 0.0658, 0.149, 0.0821, 0.130, 0.116,
+                           0.106, 0.104, 0.107, 0.133, 0.134, 0.138, 0.108, 0.131,
+                           0.135, 0.173, 0.113, 0.141, 0.0936, 0.126 )
+viz_website_2018_02_sum <- data.frame( 'visit_date' = visit_date, 'condition' = condition,
+                                       'article_published' = article_published, 
+                                       'like_conversion_rate' = like_conversion_rate )                   
+
+glimpse( viz_website_2018_02_sum )      
+```
+```{r}
+# Plot 'like' conversion rates by date for experiment
+ggplot(viz_website_2018_02_sum,
+       aes(x = visit_date,
+           y = like_conversion_rate,
+           color = condition,
+           linetype = article_published,
+           group = interaction(condition, article_published))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = as.numeric(as.Date("2018-02-15"))) +
+  scale_y_continuous(limits = c(0, 0.3), labels = percent)
+```
+clearly, when the article was published is a confounding variable for the like conversion rate.  
+
+#### Side Effects
+What if the test condition has an unintended effect (e.g. longer load time that may effect click through rates &/or actions)  
+examples: load time, Information 'above the fold' (Info that the person can see w/out scrolling)
+
+```{r}
+condition <- c( rep( c( 'tips', 'tools' ), 62/2 ) )
+pageload_delay_added <- c( rep( 'no', 31 ), rep( 'yes', 31 ) )
+visit_date <- c( sort( rep( seq(as.Date("2018-03-01"), by = "day", length.out = 31), 2 ) ) )
+like_conversion_rate <- c( 0.146, 0.0543, 0.151, 0.0514, 0.136, 0.048, 0.169, 0.0569,
+                           0.143, 0.0576, 0.160, 0.0454, 0.169, 0.0487, 0.140, 0.0395,
+                           0.146, 0.0573, 0.135, 0.044, 0.141, 0.0451, 0.139, 0.0496,
+                           0.159, 0.0534, 0.165, 0.0419, 0.101, 0.0548, 0.110, 0.0359,
+                           0.105, 0.0561, 0.103, 0.0535, 0.0840, 0.0454, 0.109, 0.0458,
+                           0.0846, 0.0395, 0.115, 0.0610, 0.111, 0.0758, 0.112, 0.0482,
+                           0.103, 0.0323, 0.0948, 0.0520, 0.110, 0.0638, 0.0981, 0.0447,
+                           0.108, 0.0701, 0.0795, 0.0544, 0.102, 0.0437 )
+                           
+viz_website_2018_03_sum <- data.frame( 'visit_date' = visit_date, 'condition' = condition,
+                                       'pageload_delay_added' = pageload_delay_added, 
+                                       'like_conversion_rate' = like_conversion_rate ) 
+glimpse( viz_website_2018_03_sum )
+```
+```{r}
+# Plot 'like' conversion rate by day
+ggplot(viz_website_2018_03_sum,
+       aes(x = visit_date,
+           y = like_conversion_rate,
+           color = condition,
+           linetype = pageload_delay_added,
+           group = interaction(condition, pageload_delay_added))) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = as.numeric(as.Date("2018-03-15"))) +
+  scale_y_continuous(limits = c(0, 0.3), labels = percent)
+```
+Adding a page delay had a visible effect on the like conversion rate of 'tips'
+
+
+### Statistical Analysis in A/B Testing
+
+#### Power Analysis
+
+
+
+#### Statistical Tests
+
+
+
+#### Stopping Rules & Sequential Analysis
+
+
+
+#### Mulivariate Testing
+
+
+
+#### A/B Testing Recap
+
+
+
+<br><br><br>
+
+
+
