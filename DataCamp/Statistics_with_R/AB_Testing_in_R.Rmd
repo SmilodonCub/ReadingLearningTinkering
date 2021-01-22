@@ -21,6 +21,8 @@ library( lubridate )
 library( scales )
 library( powerMediation )
 library( broom )
+library( pwr )
+library( gsDesign )
 ```
 
 ### Mini case study in A/B Testing
@@ -473,21 +475,123 @@ Adding a page delay had a visible effect on the like conversion rate of 'tips'
 
 #### Power Analysis
 
+What are power analyses?  
 
+**Power**  
+
+* The probability of rejecting the null hypothesis when it is false.
+* The basis of procedures for estimating the sample size needed to detect an effect of a particular magnitude
+* Power gives a method of discriminating between competing tests of the same hypothesis, the test with the higherpower being preferred.
+
+**Significance Level ($\alpha$)**  
+
+* The level of probability at which it is agreed that the null hypothesis will be rejected
+* Conventionally set at 0.05, 0.01 is common as well.
+
+**Effect Size**  
+
+* Most commonly the difference between the control group and the experimental group population means of a response variable divided by the assumed common population standard deviation.
+* Estimated by the difference of the sample means in the two groups divided by a pooled estimate of the assumed common standard deviation.
+
+Power analysis relationships: with significance level and effect size held constant, the number of data points required for a given power increases. Conversely, if power and effect size are held constant, the number of data points required decreases with higher values of significance level. If power and significance level are held constant, the number of data points needed decreases for larger effect sizes being measured.  
+So, in summary, the higher the power, smaller the effect size and lower significance level the test has, the more data samples that will be needed.
+
+```{r}
+pwr.t.test( power = 0.8,
+            sig.level = 0.05,
+            d = 0.6 )
+```
+
+what happens to the number of data points needed if the effect size is smaller?
+```{r}
+pwr.t.test( power = 0.8,
+            sig.level = 0.05,
+            d = 0.2 )
+```
+`n`, the number of data points, has dramatically increased.
 
 #### Statistical Tests
+Common statistical tests for A/B testing.*  
 
+* **logistic regression** - a binary categorical dependent variable (e.g. clicked or didn't click)
+* **t-test (linear regression)** - a continuous dependent variable (e.g. time spent on website)
 
+```{r}
+#example t-test
+glimpse( viz_website_2017 )
+example_ttest <- t.test( time_spent_homepage_sec ~ condition,
+                         data = viz_website_2017 )
+example_ttest
+```
+
+The p-vaue is 0.7167, far from significant. Therefor we cannot reject the null hypothesis.
+
+Since there are only two levels for the independent variable, we will get the same result for the ttest if we run a linear regression.
+
+```{r}
+lm( time_spent_homepage_sec ~ condition, data = viz_website_2017 ) %>%
+  summary()
+```
+run another logistic regression
+```{r}
+# Run logistic regression
+ab_experiment_results <- glm(clicked_like ~ condition,
+                             family = "binomial",
+                             data = viz_website_2017) %>%
+  tidy()
+ab_experiment_results
+```
+tools has a lower 'like' click rate than tips.
 
 #### Stopping Rules & Sequential Analysis
+**Stopping Rules**: Procedures that allow interim analysis in clinical trials at predefined times, while preserving the type 1 error at some pre-specified level.  
 
+also known as...  
+**Sequential Analysis**: A procedure in which a statistical test of significance is conducted repreatedly over time as the data are collected. After each observation, the cumulative data are analyzed and one of the following three decisions taken:  
 
+* STOP: reject the null hypothesis and claim statistical significance
+* STOP: do not reject the null hypothesis and state that the results are not statistically significant
+* Continue: since as yet the cumulative data are inadequate to draw a conclusion
+
+Stopping rules are helpful because, by being systematically built in to the experimental design, they can prevent p-value fishing trips (p-hacking). Stopping rules are helpful for dealing with situations where little is known about the effect size while more effectively allocating resources
+
+```{r}
+seq_analysis <- gsDesign( k = 4,
+                          test.type = 1,
+                          alpha = 0.05,
+                          beta = 0.2,
+                          sfu = 'Pocock' )
+seq_analysis
+```
+
+```{r}
+max_n <- 1000
+max_n_per_group <- max_n / 2
+stopping_points <- max_n_per_group * seq_analysis$timing
+stopping_points
+```
+At any of the above listed points, if there is a significant result, we can stop collecting data. 
 
 #### Mulivariate Testing
+what is you absolutely have to test 2 different aspects to evaluate?  
+Go with multivariate analysis:  
+`multivar_results <- lm( dependent_var ~ var_1 * var_2, data = df )`
 
+```{r}
+glimpse( viz_website_2017 )
+```
 
+Try a time spent on homepage multivariate analysis for likes by shares (just for demonstration)
+```{r}
+multivar_res <- viz_website_2017 %>%
+  mutate( var_1 = factor( clicked_like, levels = c( 0, 1 ) ),
+          var_2 = factor( clicked_share, levels = c( 0, 1 ) ) ) %>%
+  lm( time_spent_homepage_sec ~ var_1 * var_2,
+      data = . ) %>%
+  tidy()
 
-#### A/B Testing Recap
+multivar_res
+```
 
 
 
