@@ -1,0 +1,484 @@
+---
+title: 'Fundamentals of Bayesian Data Analysis in `R`'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+library( tidyverse )
+library( ggridges )
+library( ggExtra )
+```
+
+
+## What is Bayesian Inference Work?
+
+### A First Taste of Bayes
+
+Bayesian Inference in a Nutshell:  
+A method for figuring out unobservable quantities given known facts that uses probability to describe the uncertainty over what the values of the unknown quantities could be.  
+
+A very interesting summary of Alan Turing's use of Bayesian inference to crack the enigma code is given. (use the decrypted message to find the probable setting of the enigma machine wheels) A more full treatment of the topic can be found here: [Alan Turing and Enigma Statistics](http://www.mathcomp.leeds.ac.uk/turing2012/Images/Turing_Statistics.pdf)
+
+Bayesian Data Analysis:  
+
+* The use of bayesian inference to learn from data (the known facts) inference about parameters.  
+* Can be used for hypothesis testing, linear regressin, etc.
+* It's real power: Is flexible and allows you to construct problem-specific models
+
+Bayesian Data Analysis: a tool to make sense of your data
+
+### Let's Try Some Bayesian Data Analysis
+Bayesian inferece == Probabilistic inference.  
+
+Probability:  
+
+* A number from 0 to 1
+* A statement about the certainty / uncertainty of an event
+* 1 is complete certainty that a case is `TRUE`
+* 0 is complete certainty that a case is `FALSE`
+* Not only for binary yes / no events, but can be applied to continuous variables
+
+The role of probability distributions in Bauesian data analysis is to represent uncertainty, and the role of Bayesian inference is to update probability distributions to reflect what has been learned from data.  
+
+Let's look at a brief illustrative example,  
+**A Bayesian model for the proportion of success**  
+ex: What is the proportion ofsuccessful treatments with a new drug?  
+
+* `prop_model( data )`
+* `data` is a vector of failures represented by 1s and 0s
+* There is an unknown underlying proportion of success
+* If the data point is a success is only affected by the proportion of success
+* Prior to seeing any data, any underlying proportion of success is equally likely
+* The result is a probability distribution that represents what the model knows about the underlying proportion of success
+
+The output of prop_model is a plot showing what the model learns about the underlying proportion of success from each data point in the order you entered them. At n=0 there is no data, and all the model knows is that it's equally probable that the proportion of success is anything from 0% to 100%. At n=4 all data has been added, and the model knows a little bit more.  
+will build toward implementing `prop_model()` during this course.
+
+...but here is the code from the course author [Rasmus Bååth](https://www.fil.lu.se/person/RasmusBaath)
+```{r}
+#The prop_model function - Rasmus Bååth R code
+
+# This function takes a number of successes and failuers coded as a TRUE/FALSE
+# or 0/1 vector. This should be given as the data argument.
+# The result is a visualization of the how a Beta-Binomial
+# model gradualy learns the underlying proportion of successes 
+# using this data. The function also returns a sample from the
+# posterior distribution that can be further manipulated and inspected.
+# The default prior is a Beta(1,1) distribution, but this can be set using the
+# prior_prop argument.
+
+# Make sure the packages tidyverse and ggridges are installed, otherwise run:
+# install.packages(c("tidyverse", "ggridges"))
+
+# Example usage:
+# data <- c(TRUE, FALSE, TRUE, TRUE, FALSE, TRUE, TRUE)
+# prop_model(data)
+prop_model <- function(data = c(), prior_prop = c(1, 1), n_draws = 10000,
+                       gr_name="Proportion graph") {
+  #library(tidyverse)
+ 
+  data <- as.logical(data)
+  # data_indices decides what densities to plot between the prior and the posterior
+  # For 20 datapoints and less we're plotting all of them.
+  data_indices <- round(seq(0, length(data), length.out = min(length(data) + 1, 40)))
+  
+  # dens_curves will be a data frame with the x & y coordinates for the 
+  # denities to plot where x = proportion_success and y = probability
+  proportion_success <- c(0, seq(0, 1, length.out = 100), 1)
+  dens_curves <- map_dfr(data_indices, function(i) {
+    value <- ifelse(i == 0, "Prior", ifelse(data[i], "Success", "Failure"))
+    label <- paste0("n=", i)
+    probability <- dbeta(proportion_success,
+                         prior_prop[1] + sum(data[seq_len(i)]),
+                         prior_prop[2] + sum(!data[seq_len(i)]))
+    probability <- probability / max(probability)
+    data_frame(value, label, proportion_success, probability)
+  })
+  # Turning label and value into factors with the right ordering for the plot
+  dens_curves$label <- fct_rev(factor(dens_curves$label, levels =  paste0("n=", data_indices )))
+  dens_curves$value <- factor(dens_curves$value, levels = c("Prior", "Success", "Failure"))
+  
+  graph_label <- paste("Prior likelihood distribution Beta(a =", 
+                       as.character(prior_prop[1]),", b =",
+                                    as.character(prior_prop[2]),")") 
+  
+  p <- ggplot(dens_curves, aes(x = proportion_success, y = label,
+                               height = probability, fill = value)) +
+    ggridges::geom_density_ridges(stat="identity", color = "white", alpha = 0.8,
+                                  panel_scaling = TRUE, size = 1) +
+    scale_y_discrete("", expand = c(0.01, 0)) +
+    scale_x_continuous("Proportion of success") +
+    scale_fill_manual(values = hcl(120 * 2:0 + 15, 100, 65), name = "", drop = FALSE,
+                      labels =  c("Prior   ", "Success   ", "Failure   ")) +
+    ggtitle(paste0(gr_name, ": ", sum(data),  " successes, ", sum(!data), " failures"),
+            subtitle = graph_label) +
+    labs(caption = "based on Rasmus Bååth R code") +
+    theme_light() +
+    theme(legend.position = "top")
+  print(p)
+  
+  # Returning a sample from the posterior distribution that can be further 
+  # manipulated and inspected
+  posterior_sample <- rbeta(n_draws, prior_prop[1] + sum(data), prior_prop[2] + sum(!data))
+  invisible(posterior_sample)
+}
+```
+
+Zombie apocalypse: let us say there is a new drug to treat zombieism. It has never been tested before, but the results from this pilot test have two recoveries out of 4 subjects. Here, `prop_model` plots the successive posterior probabilities that the zombie antidote will be successful:
+```{r}
+data <- c( 1, 0, 0, 1 )
+prop_model( data )
+```
+
+Next we observe several more subjects, however, they are all failures, leaving just 2 successes out of 13 subjects. Here is how the posterior probability changes with the new case information:
+```{r}
+data <- c( 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 )
+prop_model( data )
+```
+
+What if we observe a lot more?
+```{r}
+data <- rbinom( 50, 1, 0.2 )
+prop_model( data )
+```
+
+Compare this experimental zombie drug's success with that of the currently used drug which has a 7% success rate:
+```{r}
+data2 <- rbinom( 50, 1, 0.07 )
+posterior2 <- prop_model( data2 )
+head( posterior2 )
+```
+Subjective obseration time: the more information collected about a variable, the closer the observed prior distribution approaches the 'true' probability of a success.
+
+
+* Take a **prior probability distribution** use observations from the data to update a **posterior probability distribution**
+* **prior** - a probability distribution that represents what the model knows before seeing the data
+* **posterior** - a probability distribution that represents what the model knows after having seen the data.
+
+```{r}
+data = c(1, 0, 0, 1, 0, 0,
+         0, 0, 0, 0, 0, 0, 0)
+         
+# Extract and explore the posterior
+posterior <- prop_model( data )
+head( posterior )
+```
+plot the posterior distribution:
+```{r}
+hist( posterior, breaks = 30, xlim = c( 0,1 ), col = 'palegreen4' )
+```
+
+Calculate a few descriptive statistics for the posterior distribution:
+```{r}
+# Calculate the median
+median(posterior)
+
+# Calculate the credible 90% interval
+quantile(posterior, c(0.05, 0.95))
+
+# Calculate the probability that the success rate is greater than 0.7%
+sum( posterior > 0.07 )/length(posterior)
+```
+
+Now let's try to generate a similar plot with ggplot:
+```{r}
+post_df <- data.frame( 'posterior' = posterior )
+
+ggplot( post_df, aes( x = posterior ) ) +
+  geom_histogram( fill = 'palegreen4', color = "#e9ecef" ) +
+  ggtitle( 'Posterior Probability Distribution' )
+```
+
+and display some summary statistics:
+```{r}
+summary( post_df )
+```
+
+
+How to interpret these summary statistics?  
+    "Given the data of two cured and 11 relapsed zombies, there is a 90% probability that the drug cures between 6% and 39% of treated zombies. Further, there is a 93% probability that this new drug is more effective that the current zombie drug."  
+    
+Compare the 2 posterior probability distributions in an overlapped histogram:
+```{r}
+post_df <- data.frame( 'posterior' = posterior, 'posterior2' = posterior2 )
+post_long <- post_df %>%
+  pivot_longer( cols = everything(), names_to = 'dist', values_to = 'prob' ) %>%
+  ggplot( aes( x = prob, fill = dist ) ) +
+  geom_histogram( color = "#e9ecef" ) +
+  scale_fill_manual(values=c("palegreen4", "#404080"))
+post_long
+```
+
+
+
+## How does Bayesian Inference Work?
+
+### The Parts Needed for Bayesian Inference
+
+Bayesian Inference:  
+
+* $\mbox{Bayesian Inference } = \mbox{Data } + \mbox{ a Generative Model } + \mbox{ Priors }$
+* **Generative Model**: can be a computer program, mathematical expression or a set of rules that can be fed parameters values to be used to simulate data.
+
+```{r}
+#Paramters
+prop_success <- 0.15
+n_zombies <- 13
+#simulate the data with rbinom()
+data <- rbinom( n_zombies, 1, prop_success )
+data
+```
+
+This similar function was presented in the course video:
+```{r}
+data <- c()
+for( zombie in 1 : n_zombies ) {
+  data[ zombie ] <- runif( 1, min = 0, max = 1 ) < prop_success
+}
+data <- as.numeric( data )
+data
+```
+This function gives an idea of the logic for the prevous code. However, using `rbinom()` is more efficient. Now run the generative model where the success is estimated at 42% and the test is done with 100 zombies.
+```{r}
+prop_success <- 0.42
+n_zombies <- 100
+#simulate the data with rbinom()
+data <- rbinom( 1, n_zombies, prop_success )
+data
+```
+37 zombies got cured in this run of the generative model. How about if it is run 200 times?
+```{r}
+data <- rbinom( 200, n_zombies, prop_success )
+data
+```
+Above are the results of 200 simulations of the binomial generative model with the given parameters. 
+Show some summary stats for this distribution...
+```{r}
+summary( data )
+mean( data )
+```
+
+### Using a Generative Model
+apply our generative model to a relatively large number of simulated trials. The results will for the probability distribution for our process:
+```{r}
+cured_zombies <- rbinom( n = 100000, size = 100, prob = 0.07 )
+post_df <- data.frame( 'Cured_Zombies' = cured_zombies )
+
+ggplot( post_df, aes( x = Cured_Zombies ) ) +
+  geom_histogram( binwidth = 1, fill = 'palegreen4', color = "#e9ecef" ) +
+  ggtitle( 'Cured Zombies Probability Distribution' )
+```
+
+However, it is more often the case that we have data, and do not need a generative model to create it. However, we do not know the parameters that drive the process. Bayesian Inference is used to invert the probability to work backwards and learn about the underlying process given the data at hand.
+
+**New Situations**: instead of the zombie example, let's look at clickthrough rates....  
+How many visitors to a site?  
+To get more visitors to your website you are considering paying for an ad to be shown 100 times on a popular social media site. According to the social media site, their ads get clicked on 10% of the time.
+```{r}
+# Fill in the parameters
+n_samples <- 100000
+n_ads_shown <- 100
+proportion_clicks <- 0.1
+n_visitors <- rbinom(n_samples, size = n_ads_shown, 
+                     prob = proportion_clicks)
+
+post_df <- data.frame( 'Site_Visits' = n_visitors )
+
+ggplot( post_df, aes( x = Site_Visits ) ) +
+  geom_histogram( binwidth = 1, fill = 'cadetblue', color = "#e9ecef" ) +
+  ggtitle( 'Number of Visitors Distribution' )
+```
+
+
+### Prepresenting Uncertainty with Priors
+
+And now to address the Priors.
+**Prior Probability Distribution**: represents how uncertain the model is about the parameters before seeing any data. Ideally, this uncertainty should reflect our uncertainty. The reason it is called a **prior** is because it represents the uncertainty *before* having included information about the data.  
+
+You're not so sure that your ad will get clicked on exactly 10% of the time. Instead of assigning proportion_clicks a single value you are now going to assign it a large number of values drawn from a probability distribution.
+
+```{r}
+n_samples <- 100000
+n_ads_shown <- 100
+# model a uniform probability distribution that ranges from 0 to 0.2 to represent the uncertainty of our value for this prior
+proportion_clicks <- runif( n = n_samples, min = 0.0, max = 0.2 )
+n_visitors <- rbinom( n_samples, n_ads_shown, proportion_clicks )
+```
+
+Visualize the probability distribution for the prior, proportion_clicks.
+```{r}
+pclick_df <- data.frame( 'probability_click' = proportion_clicks )
+
+pclick_plot <- ggplot( pclick_df, aes( x = probability_click ) ) +
+  geom_histogram( fill = 'cadetblue', color = "#e9ecef" ) +
+  ggtitle( 'Probability Distribution of the Prior' )
+
+nvis_df <- data.frame( 'Site_Visits' = n_visitors )
+
+nvis_plot <- ggplot( nvis_df, aes( x = Site_Visits ) ) +
+  geom_histogram( binwidth = 1, fill = 'cadetblue', color = "#e9ecef" ) +
+  ggtitle( 'Number of Visitors Distribution' )
+
+grid.arrange( pclick_plot, nvis_plot, ncol = 2 )
+```
+The envelope of the n-visitors data from this generative model is much different. The added uncertainty for the prior increases the uncertainty in the number of visitors the site will recieve.
+
+
+### Bayesian Models and Conditioning
+What if we send our add out in to the wilds of the market place and get some data on it's performance. Let's say 13 out of 100 users who were shown the ad followed through and clicked to visit the website. With this data, we can now apply some Bayesian Inference....  
+
+```{r}
+#this dataframe represents the joint probability distribution over proportion_clicks and n_visitors together.
+prior_df <- data.frame( 'proportion_clicks' = proportion_clicks, 'n_visitors' = n_visitors )
+
+#visualize as a scatterplot....
+prior_plot <- ggplot( prior_df, aes( x = n_visitors, y = proportion_clicks ) ) +
+  geom_point( alpha = 1/10 ) +
+  #geom_jitter(alpha = 1/10 ) +
+  theme( legend.position = 'none' )
+prior_plot <- ggMarginal( prior_plot, type = 'histogram', 
+                          xparams = list(  bins=20 ),
+                          yparams = list(  bins=20))
+prior_plot
+```
+The histograms show the marginal distributions. These are the same probability distributions that were described and visualized in the previous exercises.  
+
+There is a clear trend in the data: the higher the underlying proportion of clicks, the more visitors there will be to the website
+
+From this joint probability data, we can come up wih probability distributions for specific conditional situations. For example, If we know a conditional value for `proportion_clicks` = 0.10, then we can describe the distribution of `n_visitors`
+
+```{r}
+prior10_df <- prior_df %>%
+  mutate( p10 = round( proportion_clicks, 2) == 0.1 ) %>%
+  filter( p10 == TRUE ) %>%
+  select( c( n_visitors, proportion_clicks ) )
+
+prior_plot <- ggplot( prior_df, aes( x = n_visitors, y = proportion_clicks ) ) +
+  geom_point( alpha = 1/10 ) +
+  geom_point(data = prior10_df, aes(x = n_visitors, y = proportion_clicks, color = 'red' ) ) +
+  theme( legend.position = 'none' )
+prior_plot <- ggMarginal( prior_plot, type = 'histogram', 
+                          xparams = list(  bins=20 ),
+                          yparams = list(  bins=20))
+prior_plot
+```
+
+And now to plot this distribution:
+```{r}
+ggplot( prior10_df, aes( x = n_visitors ) ) +
+  geom_histogram( binwidth = 1, fill = 'red', color = "#e9ecef" ) +
+  ggtitle( 'Probability Distribution of n_visitors given proportion_clicks = 0.1' )
+```
+If we shift the `proportion_clicks`, the distribution of `n_visitors` shifts accordingly.
+Additionally, we can condition the `proportion_clicks` on a given `n_visitors`  
+
+This demonstrations brings us to **the essence of Bayesian Inference**:  
+Bayesian inference is conditioning on data, in order to learn about parameter values
+
+Let's condition on the data we collected were we got 13 visits from 100 presentations of the ad. Find the **posterior** distribution for the proportion of clicks given there were 13 visitors. It is called a posterior, because it represents the uncertainty *after* having included information from the observed data.
+```{r}
+head( prior_df )
+#condition the joint distribution with the observation that there were 13 visitors
+# Create the posterior data frame
+posterior <- prior_df[prior_df$n_visitors == 13, ]
+
+# Visualize posterior proportion clicks
+hist( posterior$proportion_clicks )
+```
+Now we can use this new estimate of the prior distribution to compute `n_visits` if we rerun the ad campaign:
+
+```{r}
+# Assign posterior to a new variable called prior
+prior <- posterior
+
+# Take a look at the first rows in prior
+head(prior)
+
+# Replace prior$n_visitors with a new sample and visualize the result
+n_samples <-  nrow(prior)
+n_ads_shown <- 100
+prior$n_visitors <- rbinom(n_samples, size = n_ads_shown,
+                           prob = prior$proportion_clicks)
+hist(prior$n_visitors)
+
+# Calculate the probability that you will get 5 or more visitors
+sum(prior$n_visitors >= 5) / length(prior$n_visitors)
+```
+From the observation of 13/100 visits, we find that it is very probable (99% probable) that future add campaigns will generate at least 5 visits.
+
+
+## Why use Bayesian Data Analysis?
+
+### Four Good Things with Bayes
+
+
+
+### Contrasts and Comparisons
+
+
+
+### Decision Analysis
+
+
+
+### Change Anything and Everything
+
+
+
+### Bayes is Optimal, kind of....
+
+
+
+## Bayesian Inference with Bayes' Theorem
+
+### Probability Rules
+
+
+
+### Calculating Likelihoods
+
+
+
+### Bayesian Calculation
+
+
+
+### Bayes' Theorem
+
+
+
+## More Parameters, More Data, and More Bayes...
+
+### The Temperature ina Normal Lake
+
+
+
+### A Bayesian Model of Water Temperature
+
+
+
+### Answering the Question: Should I have a beach party?
+
+
+
+### A Practical Tool: BEST
+
+
+
+### What hae you learned? What did we miss?
+
+
+
+<br><br><br>
