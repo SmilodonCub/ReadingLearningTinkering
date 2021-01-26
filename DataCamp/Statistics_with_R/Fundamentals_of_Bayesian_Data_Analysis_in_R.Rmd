@@ -423,11 +423,127 @@ From the observation of 13/100 visits, we find that it is very probable (99% pro
 
 ### Four Good Things with Bayes
 
+Bayes is very Flexible!  
+
+1. Can include information sources in addition to the data
+  + Background Information
+  + Expert Opinion
+  + Common Knowledge
+  + ex: suppose you ask a vendor what the median and range of success has been for previous ad campaigns.
+2. Can make many comparisons between groups or data sets
+  + Can test different experimental conditions
+  + Can easily find the probable difference between treatment groups
+  + ex: suppose you have two different treatment groups
+3. Can use the result of Bayesian Analysis to do Decision Analysis
+4. Can change the underlying statistical model
+
+**Example**: suppose you ask a vendor what the median and range of success has been for previous ad campaigns. The vendor responds that most ads get 5% clicks with a range of 2-8%. This information can be incorporated by updating the **priors** of a bayesian statistical model.  
+
+we will use the `beta` distibution with `rbeta()` as a generative model for our informed pior
+```{r}
+# Explore using the rbeta function
+beta_sample <- rbeta(n = 1000000, shape1 = 1, shape2 = 1)
+
+# Visualize the results
+hist( beta_sample )
+```
+The above distibution is an **uninformative prior** because it gives an equally likely probability for all values from 0 to 1.  
+`rbeta()` takes two shape parameters that must be positive. The larger the `shape1` parameter, the closer the mean of the distribution is the 1. The larger the `shape2` parameter, the closer the mean of the distribution is to 0.
+
+```{r}
+# Modify the parameters
+beta_sample1 <- data.frame( 'dist' = rbeta(n = 1000000, shape1 = 100, shape2 = 20) )
+# Visualize the results
+close21 <- ggplot( beta_sample1, aes( x = dist ) ) +
+  geom_histogram( fill = 'cadetblue', color = "#e9ecef" ) +
+  ggtitle( 'rbeta(nshape1 = 100, shape2 = 20)' )
+# Modify the parameters
+beta_sample2 <- data.frame( 'dist' = rbeta(n = 1000000, shape1 = 20, shape2 = 100) )
+# Visualize the results
+close20 <- ggplot( beta_sample2, aes( x = dist ) ) +
+  geom_histogram( fill = 'cadetblue', color = "#e9ecef" ) +
+  ggtitle( 'rbeta(nshape1 = 20, shape2 = 100)' )
+
+grid.arrange( close21, close20, ncol = 2 )
+```
+
+There are many values that could be used to construct a reasonable prior distribution based on the information given to us, but here is a good suggestion:
+```{r}
+# Explore using the rbeta function
+beta_sample <- rbeta(n = 1000000, shape1 = 5, shape2 = 95)
+
+# Visualize the results
+hist( beta_sample )
+```
+
+Now for some excitement!: Let's update the model developed in the previous chapter with our new, informed prior distribution for `proportion_clicks`
+
+**Old Prior**:
+```{r}
+n_draws <- 100000
+n_ads_shown <- 100
+
+# Change the prior on proportion_clicks
+proportion_clicks <- 
+  runif(n_draws, min = 0.0, max = 0.2)
+n_visitors <- 
+  rbinom(n_draws, size = n_ads_shown, 
+         prob = proportion_clicks)
+prior <- 
+  data.frame(proportion_clicks, n_visitors)
+posterior <- 
+  prior[prior$n_visitors == 13, ]
+
+# This plots the prior and the posterior in the same plot
+par(mfcol = c(2, 1))
+hist(prior$proportion_clicks, 
+     xlim = c(0, 0.25))
+hist(posterior$proportion_clicks, 
+     xlim = c(0, 0.25))
+```
+
+**New Prior**
+```{r}
+n_draws <- 100000
+n_ads_shown <- 100
+
+# Change the prior on proportion_clicks
+proportion_clicks <- 
+  rbeta(n_draws, shape1 = 5, shape2 = 95)
+n_visitors <- 
+  rbinom(n_draws, size = n_ads_shown, 
+         prob = proportion_clicks)
+prior <- 
+  data.frame(proportion_clicks, n_visitors)
+posterior <- 
+  prior[prior$n_visitors == 13, ]
+
+# This plots the prior and the posterior in the same plot
+par(mfcol = c(2, 1))
+hist(prior$proportion_clicks, 
+     xlim = c(0, 0.25))
+hist(posterior$proportion_clicks, 
+     xlim = c(0, 0.25))
+```
+The `proportion_clicks` prior is Dead! Long live the `proportion_clicks` prior!  
+Note the change in the prior distribution, but also the shift towards the left of the posterior. Indeed, the information given in the informaed prior tames the more enthusiastic response in the small data sample we have recieved with 13% clicks. The posterior distribution is shaped by both the observed data and the prior information. Which posterior should we use? The naive model favors the data we have collected. Whereas the informed posterior incorporates the outside information we have gathered. If the information is correct, then the informed posterior should lead to beter estimates of future outcomes.
 
 
 ### Contrasts and Comparisons
+Comparing Video and Text ads  
 
+```{r}
+posterior <- data.frame( 'video_prop' = rbeta(n = 1000000, shape1 = 13, shape2 = 87 ),
+                         'text_prop' = rbeta(n = 1000000, shape1 = 6, shape2 = 94 ) ) %>%
+  mutate( 'prop_diff' = video_prop - text_prop )
+head( posterior )
+```
+The new feature, `prop_diff` describes the probablity difference between the two conditions
 
+visualize:
+```{r}
+posterior_long
+```
 
 ### Decision Analysis
 
