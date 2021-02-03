@@ -435,7 +435,12 @@ Bayes is very Flexible!
   + Can easily find the probable difference between treatment groups
   + ex: suppose you have two different treatment groups
 3. Can use the result of Bayesian Analysis to do Decision Analysis
+  + **Decision Analysis**: take the result of a statistical analysis and post-process it to apply to a process of interest.
+  + the posterior distributions are not of principal interest, rather an outcome to meet a goal (e.g. highest return/clickthrough)
 4. Can change the underlying statistical model
+  + if new data indicates the need for a change e.g. from a binomial model to include a new variable(s)
+5. Bayes is optimal in the smol world that is the model
+6. In Bayesian data analysis there is a separation between model and computation
 
 **Example**: suppose you ask a vendor what the median and range of success has been for previous ad campaigns. The vendor responds that most ads get 5% clicks with a range of 2-8%. This information can be incorporated by updating the **priors** of a bayesian statistical model.  
 
@@ -538,34 +543,214 @@ posterior <- data.frame( 'video_prop' = rbeta(n = 1000000, shape1 = 13, shape2 =
   mutate( 'prop_diff' = video_prop - text_prop )
 head( posterior )
 ```
-The new feature, `prop_diff` describes the probablity difference between the two conditions
+The new feature, `prop_diff` describes the probability difference between the two conditions
 
 visualize:
 ```{r}
-posterior_long
+posterior_long <- posterior %>%
+  pivot_longer( cols = everything(), names_to = 'dist', values_to = 'val' )
+
+ggplot(posterior_long , 
+       aes(x=val, fill=dist)) + geom_histogram(alpha=0.4, position="identity")
+```
+```{r}
+# Define parameters
+n_draws <- 100000
+n_ads_shown <- 100
+proportion_clicks <- runif(n_draws, min = 0.0, max = 0.2)
+n_visitors <- rbinom(n = n_draws, size = n_ads_shown, 
+                     prob = proportion_clicks)
+prior <- data.frame(proportion_clicks, n_visitors)
+
+# Create the posteriors for video and text ads
+posterior_video <- prior[prior$n_visitors == 13, ]
+posterior_text <- prior[prior$n_visitors == 6, ]
+
+# Visualize the posteriors
+hist(posterior_video$proportion_clicks, xlim = c(0, 0.25))
+hist(posterior_text$proportion_clicks, xlim = c(0, 0.25))
+```
+```{r}
+posterior <- data.frame(
+    video_prop = posterior_video$proportion_clicks[1:4000],
+    text_prop  = posterior_text$proportion_click[1:4000])
+    
+# Calculate the posterior difference: video_prop - text_prop
+posterior$prop_diff = posterior$video_prop - posterior$text_prop 
+
+# Visualize prop_diff
+hist(posterior$prop_diff, xlim = c(0, 0.25))
+```
+
+```{r}
+# Calculate the median of prop_diff
+median(posterior$prop_diff)
+
+# Calculate the proportion
+# That is, calculate the proportion of samples in posterior$prop_diff that are more than zero.
+sum( posterior$prop_diff > 0 ) / length( posterior$prop_diff )
 ```
 
 ### Decision Analysis
 
+Bayesian data analysis makes it pretty easy to compare and contrast parameter estimates.
+
+**Decision Analysis**: using the posteriors to apply to a process. e.g.: now that we know the posteriors, which will be more lucrative video or text add campaign?
+```{r}
+video_cost <- 0.25 #per video ad
+text_cost <- 0.05 #per text ad
+visitor_spend <- 2.53 #return for each visitor to site
+
+posterior$video_profit <- posterior$video_prop * visitor_spend - video_cost
+posterior$text_profit <- posterior$text_prop * visitor_spend - text_cost
+posterior$profit_diff <- posterior$video_profit - posterior$text_profit
+
+glimpse( posterior )
+```
+Which type of add will give the most money?
+
+```{r}
+posterior_long <- posterior %>%
+  select( c( video_profit, text_profit ) ) %>%
+  pivot_longer( cols = everything(), names_to = 'dist', values_to = 'val' )
+
+ggplot(posterior_long , 
+       aes(x=val, fill=dist)) + geom_histogram(alpha=0.4, position="identity")
+```
+```{r}
+ggplot( posterior, aes( x = profit_diff ) ) +
+  geom_histogram() +
+  geom_vline( xintercept = 0, color = 'red' ) +
+  geom_vline( xintercept = median( posterior$profit_diff ),
+              color = 'blue' ) +
+  annotate( geom = 'text', 
+            x = median( posterior$profit_diff ) - 0.01,
+            y = 150, label = 'Median Value', 
+            color = 'blue', angle = 90 )
+```
+```{r}
+# Calculate a "best guess" for the difference in profits
+median(posterior$profit_diff)
+
+# Calculate the probability that text ads are better than video ads
+sum( posterior$profit_diff < 0 ) / length( posterior$profit_diff )
+```
+In conclusion, even though text ads get a lower proportion of clicks, they are also much cheaper. And, as you have calculated, there is a 63% probability that text ads are better.
 
 
 ### Change Anything and Everything
 
+Let us say that we can also show a banner ad on a website. We have tested this out and received 19 clicks for a 24 hour period. What is a good generative model to use here?
 
+**Poisson Distribution**:  
+
+* takes 1 parameter: the mean number of events per time unit
+* `rpois` samples the Poisson distibution
+```{r}
+#let's say the mean clicks is 20/day
+n_clicks <- rpois( n = 100000, lambda = 20 )
+hist( n_clicks )
+```
+
+Explore the Poisson Distribution more before we move on with Bayes
+```{r}
+# Simulate from a Poisson distribution and visualize the result
+x  <- rpois(n = 10000, lambda = 3)
+hist( x )
+
+#Let's say that you run an ice cream stand and on cloudy days you on average sell 11.5 ice creams. It's a cloudy day.
+x  <- rpois(n = 10000, lambda = 11.5)
+hist( x )
+
+#It's still a cloudy day, and unfortunately, you won't break even unless you sell 15 or more ice creams.
+# Calculate the probability of break-even
+sum( x >= 15 )/length( x )
+```
+
+Let's change the generative model to a poisson mod:
+```{r}
+# Change the model according to instructions
+n_draws <- 100000
+mean_clicks <- runif(n_draws, min = 0, max = 80)
+n_visitors <- rpois(n = n_draws, mean_clicks)
+
+prior <- data.frame(mean_clicks, n_visitors)
+posterior <- prior[prior$n_visitors == 19, ]
+
+# Visualize mean_clicks
+hist( prior$mean_clicks )
+hist( posterior$mean_clicks)
+```
 
 ### Bayes is Optimal, kind of....
-
+Bayes is optimal in the small world of the model.
 
 
 ## Bayesian Inference with Bayes' Theorem
 
 ### Probability Rules
+fitting Bayesian models more efficiently
 
+Probability Theory  
+
+* Probability
+  + a number between 0 and 1
+  + A statement of certainty/uncertainty
+  
+* Mathematical Notation
+  + P(n = 1) is a probability
+  + P(n) is a probability distribution
+  + P(n = 1|m = 1) is a conditional probability
+  + P(n|m = 1) is a conditional probability distribution
+  
+* Manipulating (independent) Probabilities
+  + The Sum Rule
+    * p( 1 or 2 or 2 ) = 1/6 + 1/6 + 1/6 = 0.5
+  + The Product Rule
+    * p( 6 and 6 ) = 1/6 * 1/6 = 1/36 = 2.8%
 
 
 ### Calculating Likelihoods
+we simulated using the `rbinom`, `rpois` etc. functions. now we can calculate using the `d` functions like `dbinom` and `pois`
 
+```{r}
+#calculate P(n_visitors = 13 | prob_success = 10%)
+dbinom( 13, size = 100, prob = 0.1)
 
+#calculate P(n_visitors = 13 or n_visitors = 14 | prob_success = 10 )
+dbinom( 13, size = 100, prob = 0.1 ) + dbinom( 14, size = 100, prob = 0.1 )
+```
+Calculating probability distributions
+```{r}
+#calculate P( n_visitors | prob_success = 0.1 )
+n_visitors <- seq( 0, 100, by = 1 )
+probability <- dbinom( n_visitors, size = 100, prob = 0.1 )
+plot( n_visitors, probability, type = 'h' )
+```
+Probability Density.. Continuous Distributions
+```{r}
+dunif( x = 0.12, min = 0, max = 0.2 )
+```
+```{r}
+# Explore using dbinom to calculate probability distributions
+n_ads_shown <- 100
+proportion_clicks <- 0.1
+n_visitors <- seq(0, 100)
+prob <- dbinom(n_visitors, 
+    size = n_ads_shown, prob = proportion_clicks)
+
+# Plot the distribution
+plot( n_visitors, prob, type = 'h')
+
+# Change the code according to the instructions
+n_ads_shown <- 100
+proportion_clicks <- seq(0, 1, by = 0.01)
+n_visitors <- 13
+prob <- dbinom(n_visitors, 
+    size = n_ads_shown, prob = proportion_clicks)
+
+plot(proportion_clicks, prob, type = "h")
+```
 
 ### Bayesian Calculation
 
