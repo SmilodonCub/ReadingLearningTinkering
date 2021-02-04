@@ -19,6 +19,8 @@ library( gridExtra )
 library( tidyverse )
 library( ggridges )
 library( ggExtra )
+library( lattice )
+library( RColorBrewer )
 ```
 
 
@@ -753,21 +755,224 @@ plot(proportion_clicks, prob, type = "h")
 ```
 
 ### Bayesian Calculation
+Bayesian Inference by Calculation. Instead of simulating probabilities, we will directly calculate them in `R`.
 
+```{r}
+n_ads_shown <- 100
+n_visitors <- seq( 0, 100, by = 1 )
+proportion_clicks <- seq( 0, 1, 0.01 )
+pars <-  expand.grid( proportion_clicks = proportion_clicks,
+                   n_visitors = n_visitors ) 
+pars$prior <- dunif( pars$proportion_clicks, min = 0, max = 0.2 )
+pars$likelihood <- dbinom( pars$n_visitors, size = n_ads_shown,
+                           prob = pars$proportion_clicks)
+pars$probability <- pars$likelihood * pars$prior
+pars$probability <- pars$probability / sum( pars$probability )
+
+glimpse( pars )
+```
+```{r}
+ggplot( pars, aes( x = n_visitors, y = proportion_clicks,
+                   fill = probability ) ) +
+  geom_tile() +
+  xlim( c( 0, 35 ) ) +
+  ylim( c( 0, 0.2 ) ) +
+  scale_fill_gradient(low="white", high="darkblue")
+```
+
+```{r}
+pars13 <- pars[ pars$n_visitors == 13, ]
+pars13$probability <- pars13$probability / sum( pars$ probability )
+
+ggplot( pars13, aes( x = n_visitors, y = proportion_clicks,
+                   fill = probability ) ) +
+  geom_tile() +
+  xlim( c( 0, 35 ) ) +
+  ylim( c( 0, 0.2 ) ) +
+  scale_fill_gradient(low="white", high="darkblue")
+```
+```{r}
+ggplot( pars13, aes( x = proportion_clicks, y = probability ) ) +
+  geom_area() +
+  xlim( c( 0, 0.3 ) )
+```
+
+A conditional shortcut: You can directly condition on the data, no need to first create the joint distribution.
+
+```{r}
+# Simplify the code below by directly conditioning on the data
+n_ads_shown <- 100
+proportion_clicks <- seq(0, 1, by = 0.01)
+n_visitors <- 6
+pars <- expand.grid(proportion_clicks = proportion_clicks,
+                    n_visitors = n_visitors)
+pars$prior <- dunif(pars$proportion_clicks, min = 0, max = 0.2)
+pars$likelihood <- dbinom(pars$n_visitors, 
+    size = n_ads_shown, prob = pars$proportion_clicks)
+pars$probability <- pars$likelihood * pars$prior
+pars$probability <- pars$probability / sum(pars$probability)
+pars$probability <- pars$probability / sum(pars$probability)
+plot(pars$proportion_clicks, pars$probability, type = "h")
+```
 
 
 ### Bayes' Theorem
+This is an implementation of Bayes' Theorem:
+```{r}
+pars$probability <- pars$likelihood * pars$prior
+pars$probability <- pars$probability / sum( pars$probability )
+```
 
+Now to write this in proper notation:
 
+$$P(\theta|D) = \frac{\mbox{P}(D|\theta) \cdot \mbox{P}(\theta)}{\sum \mbox{P}(D|\theta) \cdot \mbox{P}(\theta)}$$
+where:  
+
+* $\theta$ = paramters
+* $D$ = the Data
+
+The probability of the different parameter values given some data equals the likelihood of the relative probability of the data given the different parameter values multiplied by the prior probability of the different parameter values before seeing the data normalized by the total sum of the likelihood weighted by the prior.  
+
+In the previous chapter, we used simulation to find the solution. In this chapter we calculated the probability using an algorithm called **grid approximation**. However, there are many more algorithms to fit Bayesian models, some being more efficient than others.  
+
+tilda notation $\sim \longrightarrow \mbox{is distributed as }$ 
 
 ## More Parameters, More Data, and More Bayes...
 
-### The Temperature ina Normal Lake
+### The Temperature in a Normal Lake
+```{r}
+temp <- c( 19, 23, 20, 17, 23 )
+#f = 66, 73, 68, 63, 73
+```
+
+Use the **Normal** distribution as a generative model for values centered about a mean value.
+
+```{r}
+rnorm( n = 5, mean =  20, sd = 2 )
+```
+use `dnorm()` to look at how likely an outcome is given some fixed parameters
+```{r}
+like <- dnorm( x = temp, mean = 20, sd = 2 )
+like
+```
+the results are the relative likelihoods of the data points.
+
+```{r}
+#log likelihood
+log(like)
+```
+
+using `rnorm` & `dnorm`:
+```{r}
+# Assign mu and sigma
+mu <- 3500
+sigma <- 600
+
+par(mfrow = c( 1,2 ) ) 
+weight_distr <- rnorm(n = 100000, mean = mu, sd = sigma)
+p1 <- hist(weight_distr, 60, xlim = c(0, 6000), col = "lightgreen")
+
+# Create weight
+weight <- seq(0, 6000, by = 100)
+
+# Calculate likelihood
+likelihood <- dnorm(weight, mu, sigma)
+
+# Plot the distribution of weight
+p2 <- plot( x = weight,
+y = likelihood,
+type = 'h' )
+```
 
 
 
 ### A Bayesian Model of Water Temperature
 
+so, we have out temps: temp = 19, 23, 20, 17, 23  
+and we have out generative model: $\mbox{temp}_i \sim \mbox{Normal}(\mu,\sigma)$
+
+Now we need to our prior distributions...
+our informed guess about water temperatures is that we can expect the following standard deviation and mean:  
+$\sigma \sim \mbox{Uniform}(\mbox{min: }0,\mbox{max: }10)$  
+$\mu \sim \mbox{Normal}(\mbox{mean: }18,\mbox{sd: }5)$  
+
+we could have used many other priors, but this is our best guess for now.
+
+Let's fit our new normal model using the grid approximation method we used earlier
+
+```{r}
+temp <- c( 19, 23, 20, 17, 23 )
+mu <- seq( 8, 30, by = 0.5 )
+sigma <- seq( 0.1, 10, by = 0.3 )
+pars <- expand.grid( mu = mu, sigma = sigma )
+
+plot( pars, pch = 19, main = 'The Parameter Space' )
+```
+
+```{r}
+#the priors
+pars$mu_prior <- dnorm( pars$mu, mean = 18, sd = 5 )
+pars$sigma_prior <- dunif( pars$sigma, min = 0, max = 10 )
+pars$prior <- pars$mu_prior * pars$sigma_prior
+for( i in 1:nrow( pars ) ) {
+  likelihoods <- dnorm( temp, pars$mu[i], pars$sigma[i])
+  pars$likelihood[i] <- prod( likelihoods )
+}
+
+#calculate the posterior probability
+pars$probability <- pars$likelihood * pars$prior
+pars$probability <- pars$probability / sum( pars$probability )
+
+summary( pars )
+```
+
+now to visualize:
+```{r}
+ggplot( pars, aes( x = mu, y = sigma,
+                   fill = probability ) ) +
+  geom_tile() +
+  xlim( c( 10, 30 ) ) +
+  ylim( c( 0, 10 ) ) +
+  scale_fill_gradient(low="white", high="darkblue")
+```
+From this result, we would expect the most probable temperature to be around 19-22 degrees C.  
+
+Now to try with the zombie exercise
+
+```{r}
+# The IQ of a bunch of zombies
+iq <- c(55, 44, 34, 18, 51, 40, 40, 49, 48, 46)
+# Defining the parameter grid
+pars <- expand.grid(mu = seq(0, 150, length.out = 100), 
+                    sigma = seq(0.1, 50, length.out = 100))
+# Defining and calculating the prior density for each parameter combination
+pars$mu_prior <- dnorm(pars$mu, mean = 100, sd = 100)
+pars$sigma_prior <- dunif(pars$sigma, min = 0.1, max = 50)
+pars$prior <- pars$mu_prior * pars$sigma_prior
+# Calculating the likelihood for each parameter combination
+for(i in 1:nrow(pars)) {
+  likelihoods <- dnorm(iq, pars$mu[i], pars$sigma[i])
+  pars$likelihood[i] <- prod(likelihoods)
+}
+# Calculate the probability of each parameter combination
+pars$probability <- pars$likelihood * pars$prior
+pars$probability <- pars$probability / sum( pars$probability )
+
+# Visualize
+ggplot( pars, aes( x = mu, y = sigma,
+                   fill = probability ) ) +
+  geom_tile() +
+  xlim( c( 30, 60 ) ) +
+  ylim( c( 5, 20 ) ) +
+  scale_fill_gradient(low="white", high="darkblue")
+```
+Generate the same visualization as in the course using the `levelplot` from the `lattice` library
+
+```{r}
+coul <- colorRampPalette(brewer.pal(8, "PuRd"))(25)
+levelplot(probability ~ mu * sigma, data = pars, , col.regions = coul)
+```
+From this visualization we see that a credible interval of Zombie IQ is a mean of 42 +/- 10
 
 
 ### Answering the Question: Should I have a beach party?
