@@ -21,6 +21,7 @@ library( ggridges )
 library( ggExtra )
 library( lattice )
 library( RColorBrewer )
+library( BEST )
 ```
 
 
@@ -976,15 +977,190 @@ From this visualization we see that a credible interval of Zombie IQ is a mean o
 
 
 ### Answering the Question: Should I have a beach party?
+Revisiting the lake:  
 
+* What's likely the average water temperature on 20th of July?
+* What's the probability that the water temperture is going to be 18 or more on the nest 20th of July?
+
+```{r}
+temp <- c( 19, 23, 20, 17, 23 )
+mu <- seq( 8, 30, by = 0.5 )
+sigma <- seq( 0.1, 10, by = 0.3 )
+pars <- expand.grid( mu = mu, sigma = sigma )
+#the priors
+pars$mu_prior <- dnorm( pars$mu, mean = 18, sd = 5 )
+pars$sigma_prior <- dunif( pars$sigma, min = 0, max = 10 )
+pars$prior <- pars$mu_prior * pars$sigma_prior
+for( i in 1:nrow( pars ) ) {
+  likelihoods <- dnorm( temp, pars$mu[i], pars$sigma[i])
+  pars$likelihood[i] <- prod( likelihoods )
+}
+
+#calculate the posterior probability
+pars$probability <- pars$likelihood * pars$prior
+pars$probability <- pars$probability / sum( pars$probability )
+
+summary( pars )
+```
+
+```{r}
+sample_indices <- sample( 1:nrow( pars ), size = 10000,
+                          replace = TRUE, prob = pars$probability )
+head( sample_indices )
+pars_sample <- pars[sample_indices, c( 'mu', 'sigma' ) ]
+head( pars_sample )
+```
+
+now that we have generated samples from the distribution, let's plots them:
+```{r}
+ggplot( pars_sample, aes( x = mu ) ) +
+  geom_histogram( bins = 38 ) +
+  ggtitle( 'Histogram of Mean Temps Simulated Data' )
+```
+what's a good confidence interval for the temp?  
+```{r}
+quantile( pars_sample$mu, c( 0.05, 0.95 ) )
+```
+
+What is the probability that the temp is 18 or greater on July  20th?
+```{r}
+#feed in the simulated data
+pred_temp <- data.frame( 
+  'pred_temp' = rnorm( 10000, 
+                       mean = pars_sample$mu,
+                       sd = pars_sample$sigma ) )
+
+ggplot( pred_temp, aes( x = pred_temp ) ) +
+  geom_histogram( bins = 38 ) +
+  ggtitle( 'Histogram of Mean Temps Predicted Data' ) +
+  geom_vline( xintercept = 18, color = 'red' )
+```
+
+The probability that the temp is >= 18:
+```{r}
+sum( pred_temp >= 18 ) / length( pred_temp )
+```
+
+Now to try some similar calculations about the Zombie IQ problem
+
+```{r}
+# The IQ of a bunch of zombies
+iq <- c(55, 44, 34, 18, 51, 40, 40, 49, 48, 46)
+# Defining the parameter grid
+pars <- expand.grid(mu = seq(0, 150, length.out = 100), 
+                    sigma = seq(0.1, 50, length.out = 100))
+# Defining and calculating the prior density for each parameter combination
+pars$mu_prior <- dnorm(pars$mu, mean = 100, sd = 100)
+pars$sigma_prior <- dunif(pars$sigma, min = 0.1, max = 50)
+pars$prior <- pars$mu_prior * pars$sigma_prior
+# Calculating the likelihood for each parameter combination
+for(i in 1:nrow(pars)) {
+  likelihoods <- dnorm(iq, pars$mu[i], pars$sigma[i])
+  pars$likelihood[i] <- prod(likelihoods)
+}
+# Calculate the probability of each parameter combination
+pars$probability <- pars$likelihood * pars$prior
+pars$probability <- pars$probability / sum( pars$probability ) 
+sample_indices <- sample( nrow(pars), size = 10000,
+    replace = TRUE, prob = pars$probability)
+head(sample_indices)
+
+# Sample from pars to calculate some new measures
+pars_sample <- pars[sample_indices, c("mu", "sigma")]
+
+# Visualize the mean IQ
+hist(pars_sample$mu, 100, col = 'blue')
+
+# Calculate quantiles
+qtile_mu <- quantile( pars_sample$mu, c( 0.025, 0.5, 0.975 ) )
+```
+
+
+```{r}
+ggplot( pars_sample, aes( x = mu ) ) +
+  geom_histogram( bins = 40 ) +
+  ggtitle( 'Histogram of Sampled Mean Temps',
+           subtitle = 'median & 95% confidence interval given in red') +
+  geom_vline( xintercept = qtile_mu[1], color = 'red' ) +
+  geom_vline( xintercept = qtile_mu[2], color = 'red',
+              linetype = 'dashed' ) +
+  geom_vline( xintercept = qtile_mu[3], color = 'red' )
+```
+Therefore, we estimate the mean zombie IQ to be 42 (95% CI: [35, 50])
+
+But how smart will the next zombie be?  
+Calculate the probability that the next zombie you'll meet will have an IQ of 60 or more...
+```{r}
+pred_iq <- data.frame( 
+  'pred_iq' = rnorm(10000, 
+                    mean = pars_sample$mu, 
+                    sd = pars_sample$sigma ) )
+
+# Visualize pred_iq
+ggplot(pred_iq, aes( x = pred_iq ) ) +
+  geom_histogram() +
+  geom_vline( xintercept = 60, color = 'red' )
+
+# Calculate the probability of a zombie being "smart" (+60 IQ)
+sum( pred_iq >= 60 ) / length( pred_iq )
+```
 
 
 ### A Practical Tool: BEST
+BEST:  
 
+  * A Bayesian model developed by John Kruschle
+  * Assumes the data come from a t-distribution (another generative model) 
+  * the t-distribution is similar to the normal. However, it has an additional parameter the degrees of freedom. When df is low, the dist looks a lot like the normal. When df if high, the t-distribution approximates outliers.
+  * BEST estimates the mean, standard deviation, and degrees of freedom parameters.
+  * Uses Markov chain Monte Carlo method to fit the model
+  
+```{r}
+iq <- c( 55, 44, 34, 18, 51, 40, 40, 49, 48, 46 )
+fit <- BESTmcmc( iq )
+fit
+```
+```{r}
+plot( fit )
+```
 
+```{r}
+# The IQ of zombies on a regular diet and a brain based diet.
+iq_brains <- c(44, 52, 42, 66, 53, 42, 55, 57, 56, 51)
+iq_regular <- c(55, 44, 34, 18, 51, 40, 40, 49, 48, 46)
 
-### What hae you learned? What did we miss?
+# Calculate the mean difference in IQ between the two groups
+mean(iq_brains) - mean(iq_regular)
 
+# Fit the BEST model to the data from both groups
+best_posterior <- BESTmcmc(iq_brains, iq_regular)
 
+# Plot the model result
+plot( best_posterior )
+```
+Using the t-distribution as a generative model makes the BEST fit more robust to outliers. Compare the difference of sample means with the BEST model difference
+```{r}
+# The IQ of zombies given a regular diet and a brain based diet.
+iq_brains <- c(44, 52, 42, 66, 53, 42, 55, 57, 56, 51)
+iq_regular <- c(55, 44, 34, 18, 51, 40, 40, 49, 48, 150) # <- Mutant zombie
+
+# Modify the data above and calculate the difference in means
+mean(iq_brains) - mean(iq_regular)
+
+# Fit the BEST model to the modified data and plot the result
+best_posterior <- BESTmcmc(iq_brains, iq_regular)
+
+plot( best_posterior )
+```
+
+### What have you learned? What did we miss?
+
+Bayesian Inference:
+
+* Data
+* Bayesian Model
+  + Generative Model
+  + Priors
+* Computational Method
 
 <br><br><br>
