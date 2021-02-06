@@ -1,0 +1,315 @@
+---
+title: 'Fundamentals of Bayesian Data Analysis in `R`'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( MASS )
+```
+
+
+## Introduction to Linear Algebra
+
+### Motivations
+
+linear operations on mathematical objects such as vectors, matrices and tensors.  
+
+**Vectors**: storing univariate data.  
+generating vectors in `R`
+```{r}
+#replicating values
+rep( c( 1,2,3 ), 4 )
+rep( c( 1,2,3 ), each = 4 )
+```
+```{r}
+#generating sequences of values
+seq( 2,8, by = 2 )
+seq( 0, 55, by = 5 )
+```
+```{r}
+#or just specify values
+z <- c( 1,5,-2,4 )
+z
+```
+```{r}
+#assigning values of a vector
+z[2] <- 7
+z
+```
+
+**Matrices** - Storing Tables of Data.
+can be thought of as a superposition of vectors.  
+generating matrices in `R`:
+```{r}
+matrix( 5,3,4 )
+```
+```{r}
+#can also specify values:
+matrix( c( 1,-1,2,3,2,-2 ), nrow =2, ncol = 3, byrow = TRUE )
+Z <- matrix( c( 1,-1,2,3,2,-2 ), nrow =2, ncol = 3, byrow = FALSE )
+Z
+```
+can also update values with by assignment:
+```{r}
+Z[ 2,1 ] <- 100
+Z
+```
+
+Algebra of Vectors:
+```{r}
+x <- seq( 1, 7, by = 1)
+y <- seq( 2, 14, by = 2 )
+z <- c( 1, 1, 2 )
+# Add x to y and print
+print(x + y)
+
+# Multiply z by 2 and print
+print(2 * z)
+
+# Multiply x and y by each other and print
+print(x * y)
+```
+
+Creating Matrices
+```{r}
+# Create a matrix of all 1's and all 2's that are 2 by 3 and 3 by 2, respectively
+matrix(1, nrow = 2, ncol = 3)
+
+print(matrix(2, nrow = 3, ncol = 2))
+
+A <- matrix( 1, nrow = 2, ncol = 2 )
+# Create a matrix B and changing the byrow designation.
+B <- matrix(c(1, 2, 3, 2), nrow = 2, ncol = 2, byrow = FALSE)
+B <- matrix(c(1, 2, 3, 2), nrow = 2, ncol = 2, byrow = TRUE)
+
+# Add A to the previously-created matrix B
+A + B
+```
+
+
+### Matrix-Vector Operations
+an operation with the following dimensions (n,m)*(m,1) = (n,1) size vector.
+
+consider the following matrix:
+```{r}
+A = matrix(c(1, 2, 3, -1, 0, 3), nrow = 2, ncol = 3, byrow = TRUE)
+A
+```
+This is a 2x3 matrix. therefore, it can be multiplied by a 3x1 vector
+
+
+### Matrix-Matrix Calculations
+an operation with the following dimensions (n,m)*(m,o) = (n,o) size matrix.  
+Matrix multiplication is not cummutative (order matters). Also, %*% $\neq$ *
+
+```{r}
+A <- matrix( c( 1,2,2,1 ), nrow = 2, ncol = 2, byrow = TRUE )
+A
+I <- diag( 2 )
+I
+I%*%A
+A%*%I
+```
+The Identity matrix returns a mirror image of the input.
+
+Some important matrix concepts:  
+1. Square Matrices
+2. The Matrix Inverse
+3. Singular Matrices
+4. Diagonal and triangular matrices
+
+```{r}
+A <- matrix( c( 1,2,-1,2 ), nrow = 2, ncol = 2, byrow = TRUE )
+
+# Take the inverse of the 2 by 2 identity matrix
+solve(diag( 2 ))
+
+# Take the inverse of the matrix A
+Ainv <- solve(A)
+
+# Multiply A inverse by A
+Ainv%*%A
+
+# Multiply A by its inverse
+A%*%Ainv
+```
+
+
+## Matrix-Vector Equations
+
+### Motivation for Solving Matrix-Vector Equations
+can one vector be described as a linear combination of other vectors?
+$$A\vec{x} = \vec{b}$$
+can the vector $\vec{b}$ be described as a linear combination of the columns of $A$?  
+
+The Massy Matrix:
+
+$$\left( \begin{array}{cc} 4 & -1 & -1 & -1 & -1 \\ -1 & 4 & -1 & -1 & -1 \\ -1 & -1 & 4 & -1 & -1 \\ -1 & -1 & -1 & 4 & -1 \\ -1 & -1 & -1 & -1 & 4 \end{array} \right)
+\left( \begin{array}{cc} r_{JH} \\ r_{FM} \\ r_G \\ r_D \\ r_{McD} \end{array} \right) = \left( \begin{array}{cc} 103 \\ 28 \\ 15 \\ -40 \\ -106 
+ \end{array} \right)$$
+
+The rankings of the team are the coefficients that describe the linear combination of rows from the Massy matrix that produce the net point differential for the teams
+
+Let's have a look using some real data:
+
+```{r}
+url <- 'https://assets.datacamp.com/production/repositories/2654/datasets/6bfadc8a2147bddbbaedafc8e21b8576cb4364ce/WNBA_Data_2017_M.csv'
+WNBA_df <- read.csv( url )
+WNBA_mmat <- data.matrix( WNBA_df )
+url <- 'https://assets.datacamp.com/production/repositories/2654/datasets/4e20e9adfd6514bd5b1bfb1464cd6da9fbbadfe9/WNBA_Data_2017_f.csv'
+WNBA_pd <- read.csv( url )
+```
+
+```{r}
+# Print the Massey Matrix M
+print( WNBA_mmat )
+
+# Print the vector of point differentials f 
+print( WNBA_pd )
+
+# Find the sum of the first column of M
+sum(WNBA_mmat[,1])
+
+# Find the sum of the vector f
+sum(WNBA_pd)
+```
+
+### Matrix-Vector Equations - Some Theory
+
+What conditions are needed for Matrix-Vector equations to have a unique solution?  
+I $A$ is an $n*n$ square matrix, then the following conditions are equivalent and imply a unique solution:  
+
+* The matrix $A$ must have an inverse
+* The determinant of $A$ is nonzero
+* The rows and columns of $A$ form a basis for the set of all vectors with $n$ elements
+* the homogeneous equation $A\vec{x}=\vec{0}$ has just the trivial ($\vec{x}=0$) solution
+
+Does the matrix have an inverse:
+```{r}
+solve( A )
+```
+
+Is the determinant > 0?
+```{r}
+det( A )
+```
+
+
+Try it with the WNBA Massy Matrix:
+
+```{r}
+solve( WNBA_mmat )
+```
+
+what is the determinant?
+```{r}
+det( WNBA_mmat )
+```
+
+### Solving Matrix-Vector Equations
+it's a whole lot simpler with `R`:
+```{r}
+A <- matrix( c( 1,-2,0,4 ), nrow = 2, ncol = 2, byrow = TRUE )
+b <- matrix( c( 1,-2 ), nrow = 2, ncol = 1, byrow = TRUE )
+x <- solve( A )%*%b
+x
+```
+check the solution. does $A\vec{x}$ give you back $b$?
+```{r}
+res <- A%*%x
+b == res
+```
+back to the 2017 WNBA Rating
+```{r}
+WNBA_pd$Differential[13] <- 0
+
+#now to solve for the ratings vector
+# Solve for r and rename column
+ratings <- solve(WNBA_mmat)%*%WNBA_pd$Differential
+colnames(ratings) <- "Rating"
+ratings_df <- data.frame( ratings )
+
+# Print r
+head( ratings_df,5 )
+```
+Which team is the best?
+```{r}
+head( arrange(ratings_df, -Rating), 5 )
+```
+
+### Other Considerations for Matrix-Vector Equations
+Options for non-square matrices:  
+
+* Row Reduction
+* Least Squares
+* Single Value Decomposition
+* Generalized / Pseudo-Inverse (when not invertible)
+
+```{r}
+#ginv() to find the generalized inverse
+A <- matrix( c( 2, 3, -1, 4, 1, 7 ), nrow = 3, ncol = 2, byrow = TRUE )
+ginv( A )
+```
+can think of as serving the same purpose as `solve()` for an mat w/no inverse.
+```{r}
+ginv( A )%*%A
+```
+that's almost the identity matrix....
+```{r}
+A%*%ginv( A )
+```
+
+Now to solve the WNBA ratings...
+```{r}
+# Find the rating vector the conventional way
+ratings <- solve(WNBA_mmat)%*%WNBA_pd$Differential
+colnames(ratings) <- "Rating"
+ratings_df <- data.frame( ratings )
+
+# Find the rating vector using ginv
+r <- ginv(WNBA_mmat) %*% WNBA_pd$Differential
+colnames(r) <- "Rating"
+print(r)
+```
+## Eigenvalues and Eigenvectors
+
+
+### Intro to Eigenvalues and Eigenvectors
+
+
+### Definition of Eigenvalues and Eigenvectors
+
+
+### Computing Eigenvalues and Eigenvectors in `R`
+
+
+### Some More on Eigenvalues and Eigenvectors
+
+
+## Principal Component Analysis
+
+
+### Intro to the Idea of PCA
+
+
+### The Linear Algebra Behind PCA
+
+
+### Performing PCA in `R`
+
+
+### Wrap-Up
+
+
+
+<br><br><br>
