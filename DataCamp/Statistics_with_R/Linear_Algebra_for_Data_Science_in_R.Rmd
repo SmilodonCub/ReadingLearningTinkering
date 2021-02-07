@@ -1,5 +1,5 @@
 ---
-title: 'Fundamentals of Bayesian Data Analysis in `R`'
+title: 'Linear Algebra for Data Science in `R`'
 subtitle: 'DataCamp: Statistics with `R`'
 author: 'Bonnie Cooper'
 output:
@@ -15,6 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library( dplyr )
 library( MASS )
+library( ggplot2 )
 ```
 
 
@@ -285,30 +286,236 @@ print(r)
 
 
 ### Intro to Eigenvalues and Eigenvectors
+Eigenvectors take collections of objects and subset a selection to approximate the data
+
+Matrix Multiplications: rotations, reflections, dilations, contractions, projections & combinations. Eigenvalue/vector operations can represent complex data by decomposing to the sum of simpler operations
 
 
 ### Definition of Eigenvalues and Eigenvectors
+For a matrix A, the scalar $\lambda$ is an eigenvalue of A with associated eigenvector $\hat{v} \neq \hat{0}$ if the following is true:
+$$A\hat{v}= \lambda \hat{v}$$
+In other words: the matrix multiplication $A\hat{v}$, a matrix-vector operation, produces the same vector as $\lambda \hat{v}$ a scalar-vector operation.
 
+An example:
+```{r}
+A <- matrix( c( 2, 3, 0, 1 ), nrow = 2, ncol = 2, byrow = TRUE )
+A
+A %*% c(1,0) == 2*c(1,0)
+```
+We can say that 2 is an eigenvalue of $A$ with the associated eigenvector $\hat{v} = (1,0)^T$  
+These two can be called an eigenpair of the matrix $A$  
+
+Eigenvectors are all about direction and not magnitude. An eigenvector of $A$ is a vector that points in its own (or complete opposite) direction upon multiplication by $A$.
+
+```{r}
+A <- matrix( c( -1, 2, 4, 0, 7, 12, 0, 0, -4 ), nrow = 3, ncol = 3, byrow = TRUE )
+# Show that 7 is an eigenvalue for A
+A%*%c(0.2425356, 0.9701425, 0) - 7*c(0.2425356, 0.9701425, 0)
+
+# Show that -4 is an eigenvalue for A
+A%*%c(-0.3789810, -0.6821657, 0.6253186) - -4*c(-0.3789810, -0.6821657, 0.6253186)
+
+# Show that -1 is an eigenvalue for A
+A%*%c(1,0,0) - -1*c(1,0,0)
+
+# Show that double an eigenvector is still an eigenvector
+A%*%((2)*c(0.2425356, 0.9701425, 0)) - 7*(2)*c(0.2425356, 0.9701425, 0)
+
+# Show half of an eigenvector is still an eigenvector
+A%*%((0.5)*c(0.2425356, 0.9701425, 0)) - 7*(0.5)*c(0.2425356, 0.9701425, 0)
+```
 
 ### Computing Eigenvalues and Eigenvectors in `R`
+Solving Eigenvalue/Eigenvector Problems
 
+Properties:  
+
+* an n by n matrix has up to n eigenvalues
+* even is A is a matrix of all real numbers, some or even all of its eigenvalues could be complex numbers
+* all complex eigenvalues must come in conjugate pairs
+
+Very simple to solve in `R`
+```{r}
+E <- eigen( A )
+E
+```
+
+```{r}
+A <- matrix( c( 1, 2, 1, 1 ), nrow = 2, ncol = 2, byrow = TRUE )
+
+# Compute the eigenvalues of A and store in Lambda
+Lambda <- eigen(A)
+
+# Print eigenvalues
+print(Lambda$values[1])
+print(Lambda$values[2])
+
+# Verify that these numbers satisfy the conditions of being an eigenvalue
+det(Lambda$values[1]*diag(2) - A)
+det(Lambda$values[2]*diag(2) - A)
+
+# Print eigenvectors
+print(Lambda$vectors[, 1])
+print(Lambda$vectors[, 2])
+
+# Verify that these eigenvectors & their associated eigenvalues satisfy Av - lambda v = 0
+Lambda$values[1]*Lambda$vectors[, 1] - A%*%Lambda$vectors[, 1]
+Lambda$values[2]*Lambda$vectors[, 2] - A%*%Lambda$vectors[, 2]
+```
 
 ### Some More on Eigenvalues and Eigenvectors
+If all the eigenvalues are distinct, then the eigenvectors form a basis for the set of n-dimensional vectors.
 
+Eigenpairs turn matrix multiplication into a linear combination of scalar multiplications. can see this by applying the matrix A to $\vec{x}$ and using the fact that $A\vec{v}_j = \lambda_j \vec{v}_j$:
+$$A\vec{x} = c_1\lambda_1 \vec{v}_1 + c_2\lambda_2 \vec{v}_2 + \cdots + c_n\lambda_n \vec{v}_n$$
+Markov Model for Allele Frequency
+```{r}
+A <- matrix( c( 0.98, 0.005, 0.005, 0.01,
+                0.005, 0.98, 0.01, 0.005,
+                0.005, 0.01, 0.98, 0.005,
+                0.01, 0.005, 0.005, 0.98), nrow = 4, ncol = 4, byrow = TRUE )
+A
+```
+```{r}
+# This code iterates mutation 1000 times
+x <- c(1, 0, 0, 0)
+for (j in 1:1000) {x <- A%*%x}
+
+# Print x
+print(x)
+
+# Print and scale the first eigenvector of M
+Lambda <- eigen(A)
+v1 <- Lambda$vectors[, 1]/sum(Lambda$vectors[, 1])
+
+# Print v1
+print(v1)
+```
 
 ## Principal Component Analysis
 
-
 ### Intro to the Idea of PCA
 
+```{r}
+url <- 'https://assets.datacamp.com/production/repositories/2654/datasets/760dae913f682ba6b2758207280138662ddedc0d/DataCampCombine.csv'
+combine <- read.csv( url )
+glimpse( combine )
+```
+```{r}
+ggplot( combine, aes( x = shuttle, y = forty ) ) +
+  geom_point( )
+```
 
+Removing redundant features from data. Highly correlated features adds redundancy which detracts from the explanatory value of the model.
+
+**Principal Component Analysis**  
+
+* One of the more useful methods from applied linear algebra
+* Non-parametric way of extracting meaningful information from confusing data sets
+* Uncovers hidden, low-dimensional structures that underlie your data
+* These structures are more-easily visualized and are often interpretable to content experts
+
+```{r}
+ggplot( combine, aes( x = three_cone, y = forty ) ) +
+  geom_point( )
+
+# Find the correlation between variables forty and three_cone
+cor(combine$forty, combine$three_cone)
+```
+```{r}
+ggplot( combine, aes( x = vertical, y = broad_jump ) ) +
+  geom_point( )
+
+# Find the correlation between variables forty and three_cone
+cor(combine$forty, combine$three_cone)
+```
 ### The Linear Algebra Behind PCA
 
+* the ith element of the diagonal of $\frac{A^TA}{n-1}$ is the variance of the ith column of the matrix
+* the eigenvalues of $\frac{A^TA}{n-1}$ are real, and the corresponding eigenvectors are orthogonal or point in distinct directions
+* the total variance of the data set is the sum of the eigenvalues of $\frac{A^TA}{n-1}$
+* these eigenvectors are called the principal components of the data set in the matrix A
+* the direction that an eigenvector points can explain eigenvalues of the total variance in the data set. if an eigenvalue or subset of eigenvalues explains a significant amount of the total variance, there is an opportunity for dimension reduction.
+
+```{r}
+# Extract columns 5-12 of combine
+A <- combine[, 5:12]
+
+# Make A into a matrix
+A <- as.matrix(A)
+
+#find the means of each column
+meanA <- colMeans( A )
+
+# Subtract the mean of each column
+A <- sweep( A, 2, meanA )
+head(A)
+```
+
+```{r}
+# Create matrix B from equation in instructions
+B <- t(A)%*%A/(nrow(A) - 1)
+
+# Compare 1st element of the 1st column of B to the variance of the first column of A
+B[1,1]
+var(A[, 1])
+
+# Compare 1st element of 2nd column of B to the 1st element of the 2nd row of B to the covariance between the first two columns of A
+B[1, 2]
+B[2, 1]
+cov(A[, 1], A[, 2])
+```
+```{r}
+# Find eigenvalues of B
+V <- eigen( B )
+
+# Print eigenvalues
+V$values
+
+# Print eigenvectors
+V$vectors
+
+# Roughly how much of the variability in the dataset can be explained by the first principal component?
+
+V$values[1] / sum( V$values )
+```
+That's right. A great deal of the variability in the athletic profile of future NFL players can be attributed to one linear combination of the data!
 
 ### Performing PCA in `R`
+```{r}
+combine_pca <- combine %>% 
+  dplyr::select( height:shuttle ) %>% 
+  prcomp()
 
+summary( combine_pca )
+```
+extract PC of interest. here we take the first 2 which account for 98.6% of the variance
 
-### Wrap-Up
+```{r}
+combine_pca_res <- cbind( combine[, 1:4 ], combine_pca$x[,1:2])
+head( combine_pca_res )
+```
+
+```{r}
+ggplot( combine_pca_res, aes( x = PC1, y = PC2, color = position ) ) +
+  geom_point()
+```
+
+Subset the data for a certain position
+```{r}
+# Subset combine only to "WR"
+combine_WR <- subset(combine, position == "WR")
+
+# Scale columns 5-12 of combine_WR
+B <- scale(combine_WR[, 5:12])
+
+# Print the first 6 rows of the data
+head( B )
+
+# Summarize the principal component analysis
+summary(prcomp( B ))
+```
+
 
 
 
