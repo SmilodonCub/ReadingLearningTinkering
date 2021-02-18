@@ -1,0 +1,553 @@
+---
+title: 'Inference for Categorical Data in `R`'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+library( infer )
+library( tidyr )
+```
+
+
+## Inference for a Single Parameter
+
+
+### The General Social Survey
+```{r}
+load( file = '/home/bonzilla/Documents/ReadingLearningTinkering/DataCamp/Statistics_with_R/gss.RData' )
+glimpse( gss )
+```
+Let's visualize the distribution for the feature `happy`:
+```{r}
+gss2016 <- filter( gss, year == 2016 )
+
+p1 <- ggplot( gss2016, aes( x = happy ) ) +
+  geom_bar()
+
+gss2016 <- gss2016 %>%
+  mutate( Happy = case_when( happy == "VERY HAPPY" ~ "HAPPY",
+                            happy == "PRETTY HAPPY" ~ "HAPPY",
+                            happy == "NOT TOO HAPPY" ~ "UNHAPPY",)) %>%
+  drop_na( Happy )
+
+p2 <- ggplot( gss2016, aes( x = Happy ) ) +
+  geom_bar()
+
+grid.arrange( p1, p2, ncol = 2 )
+```
+find the proportion of `PRETTY HAPPY` people:
+```{r}
+p_hats <- gss2016 %>%
+  group_by( Happy ) %>%
+  summarise( count = n() ) %>%
+  mutate( prop = count / sum( count ) )
+p_hats
+```
+
+### Bootstrap
+
+95% Confidence interval. estimate by adding / subtracting $2\cdot SE$. Find the $SE$ by bootstrapping:  
+
+* `specify()`
+* `generate()`
+* `calculate()`
+
+```{r}
+boot <- gss2016 %>%
+  specify( response = Happy,
+           success = "HAPPY" ) %>%
+  generate( reps = 500,
+            type = "bootstrap" ) %>%
+  calculate( stat = "prop" )
+
+bootplot <- ggplot( boot, aes( x = stat ) ) +
+  geom_density()
+
+bootplot
+```
+
+find the standard deviation 
+
+```{r}
+SE <- boot %>% summarize( sd( stat ) ) %>% pull()
+SE
+```
+Now we can find our confidence interval by adding / subtracting 'SE' from 'p_hat':
+```{r}
+CI <- c( p_hats$prop[1] - 2*SE, p_hats$prop[1] + 2*SE)
+CI
+```
+We can be 95% confident that the number of happy Americans is somewhere between 82.6% <->85.3%
+
+```{r}
+bootplot + 
+  geom_vline( xintercept = CI[1], color = 'red' ) +
+  geom_vline( xintercept = CI[2], color = 'red' )
+```
+
+how much confidence people had in the scientific community in 2016? Let's take a look at this survey question...
+```{r}
+# Plot distribution of consci
+ggplot(gss2016, aes(x = consci )) +
+  # Add a bar layer
+  geom_bar()
+```
+```{r}
+# Compute proportion of high conf
+p_hat <- gss2016 %>%
+  group_by( consci ) %>%
+  summarise( count = n() ) %>%
+  mutate( prop = count / sum( count ) )
+p_hat
+```
+
+```{r}
+boot1 <- gss2016 %>%
+  mutate( ConSci = case_when( consci == "A GREAT DEAL" ~ "High",
+                            consci == "ONLY SOME" ~ "Low",
+                            consci == "HARDLY ANY" ~ "Low",)) %>%
+  drop_na( ConSci ) %>%
+  specify(response = ConSci, success = "High") %>%
+  generate(reps = 1, type = "bootstrap") 
+
+
+boot1 %>%
+  dplyr::summarize(prop_high = mean( ConSci == "High" )) %>%
+  pull()
+```
+bootstrap many times and construct CIs
+```{r}
+# Create bootstrap distribution for proportion with High conf
+boot_dist <- gss2016 %>%
+  mutate( ConSci = case_when( consci == "A GREAT DEAL" ~ "High",
+                            consci == "ONLY SOME" ~ "Low",
+                            consci == "HARDLY ANY" ~ "Low",)) %>%
+  drop_na( ConSci ) %>%
+  # Specify the response and success
+  specify(response = ConSci, success = "High") %>%
+  # Generate 500 bootstrap reps
+  generate(reps = 500, type = "bootstrap") %>%
+  # Calculate proportions
+  calculate(stat = "prop")
+#boot_dist
+
+# Compute estimate of SE
+SE <- boot_dist %>%
+  summarize(se = sd( stat )) %>%
+  pull()
+#SE
+
+# Plot bootstrap distribution of stat
+ggplot( boot_dist, aes( x = stat )) +
+  # Add density layer
+  geom_density() +
+  geom_vline( xintercept = mean( boot_dist$stat ) - 2*SE, color = 'red' ) +
+  geom_vline( xintercept = mean( boot_dist$stat ) + 2*SE, color = 'red' )
+
+```
+
+
+### Interpreting a Confidence Interval
+Interpretation: "We're 95% confident that the true proportion is somewhere in this interval." Or, if we drew up 100 sample estimates and their CIs, 95 would contain the true value of the proportion.  
+
+The width of CIs are affected by 3 things:  
+
+* `n` the number of samples. SE decreasing with increasing number of sample
+* $\alpha$ the confidence level. Higher confidence == wider CI 
+* `p` the value of the parameter. SEs are highest when estimating proportions close to 0.5.
+
+**SE**: Standard Error: the less data you have to make an estimate, the more uncertainty there will be as to the value of that estimate
+
+
+### The Approximation Shortcut
+a shortcut that uses the Normal Distribution. 
+
+is the sample sufficiently large?
+```{r}
+p_hat <- gss2016 %>%
+  mutate( Happy = case_when( happy == "VERY HAPPY" ~ "HAPPY",
+                            happy == "PRETTY HAPPY" ~ "HAPPY",
+                            happy == "NOT TOO HAPPY" ~ "UNHAPPY",)) %>%
+  drop_na( Happy ) %>%
+  summarize( mean( Happy == "HAPPY" ) ) %>%
+  pull()
+
+n <- nrow( gss2016 )
+
+#these 2 criteria both need to be greater than 10:
+c( n * p_hat, n*(1-p_hat))
+```
+Shortcut SE:
+```{r}
+SE_approx <- sqrt( p_hat * ( 1 - p_hat ) / n )
+SE_approx
+```
+
+Does the normal distribution describe our data?
+```{r}
+ggplot( boot, aes( x = stat ) ) +
+          geom_density() +
+  stat_function( fun = dnorm,
+                 color = 'purple',
+                 args = list( mean = p_hat,
+                              sd = SE_approx ) )
+```
+The approximation methods describe the data reasonably when normality criteria are met.
+
+
+## Proportions: Testing and Power
+
+### Hypothesis Test for a Proportion
+
+* Confidence Interval - Captures how much uncertainty there is in the estimate. is formed using the Standard Error.  
+* Hypothesis Test - What estimates would you observe if the ground truth holds a particular value?  
+  + Using the `infer` library, we can use the `hypothesize()` function
+  + the sampling distribution gives us the uncertainty in the data when the $H_0$ is true
+  
+Demonstrate this with the survey data: Do half of Americans favor capital punishment?  
+
+```{r}
+gss2016 %>%
+  drop_na( cappun ) %>%
+  ggplot( aes( x = cappun ) ) +
+  geom_bar()
+```
+```{r}
+p_hat <- gss2016 %>%
+  drop_na( cappun ) %>%
+  dplyr::summarize( mean( cappun == 'FAVOR' ) ) %>%
+  pull()
+p_hat 
+```
+Is this data consistent with a world where only half of Americans favor the death penalty?  
+look at a distribution of the null hypothesis $H_0$:
+```{r}
+null <- gss2016 %>%
+  drop_na( cappun ) %>%
+  specify( response = cappun, succes = 'FAVOR' ) %>%
+  hypothesize( null = 'point', p = 0.5 ) %>%
+  generate( reps = 500, type = 'simulate' ) %>%
+  calculate( stat = 'prop' )
+
+ggplot( null, aes( x = stat ) ) +
+  geom_density() +
+  geom_vline( xintercept = p_hat, color = 'red' )
+```
+
+The proportion is well above the null distribution. We can quantify this with the p-value which gives the proportion of $H_0$ values $\geq$ the estimated proportion from the data, $\hat{p}$
+```{r}
+null %>%
+  summarise( mean( stat > p_hat ) ) %>%
+  pull() * 2
+```
+
+Hypothesis test:
+
+* Null hypothesis: theory about the state of the world
+* Null distribution: distribution of test statistics assuming the nul hypothesis is true
+* p-value: a measure of consistency between the null hypothesis and your observation
+  + high p-val: $\mbox{p-value }\gt\alpha$ observation is consistent with the null
+  + low p-val: $\mbox{p-value }\lt\alpha$  observation is not consistent with the null
+
+Let's try the same analysis with another feature.
+Do 75% of Americans believe in an afterlife?
+```{r}
+gss2016_al <- gss2016 %>%
+  drop_na( postlife )
+# Using `gss2016`, plot postlife
+ggplot( gss2016_al, aes( x = postlife ) ) +
+  # Add bar layer
+  geom_bar()
+```
+calculate the population estimate:
+```{r}
+# Calculate and save proportion that believe
+p_hat <- gss2016_al %>%
+  dplyr::summarize(prop_yes = mean(  postlife == 'YES')) %>%
+  pull()
+
+# See the result
+p_hat
+```
+Our sample $\hat{p}=$ `r p_hat` and we would like to test our result against the claim that 75% of Americans believe in an afterlife. This is interpreted as a point null hypothesis that the population proportion has the value 75%.  
+Here we generate data under the null hypothesis:
+
+1 example simulation for p = 0.75
+```{r}
+# From previous step
+sim1 <- gss2016_al %>%
+  specify(response = postlife, success = "YES") %>%
+  hypothesize(null = "point", p = 0.75) %>%
+  generate(reps = 1, type = "simulate")
+
+# Using sim1, plot postlife
+ggplot( sim1, aes( x = postlife )) +
+  # Add bar layer
+  geom_bar()
+```
+find the simulated proportion
+```{r}
+# Compute proportion that believe
+sim1 %>%
+  summarise(prop_yes = mean(postlife == "YES")) %>%
+  pull()
+```
+Now that we've seen an example simulation, let's do this many many times so that we can build a distribution of expected values assuming the true proportion is 75% Yes:
+
+```{r}
+# Generate null distribution
+null <- gss2016_al %>%
+  specify(response = postlife, success = "YES") %>%
+  hypothesize(null = "point", p = 0.75) %>%
+  generate(reps = 1000, type = "simulate") %>%
+  # Calculate proportions
+  calculate(stat = 'prop')
+```
+
+Now to visualize the null distribution with our sample estimate, $\hat{p}$
+```{r}
+# Visualize null distribution
+ggplot( null, aes( x = stat )) +
+  # Add density layer
+  geom_density() +
+  # Add line at observed
+  geom_vline(xintercept = p_hat, color = "red")
+```
+Calculate the p-value:
+```{r}
+null %>%
+  summarize(
+    # Compute the one-tailed p-value
+    one_tailed_pval = mean(stat >= p_hat),
+    # Compute the two-tailed p-value
+    two_tailed_pval = 2 * one_tailed_pval
+  ) %>%
+  pull(two_tailed_pval)
+```
+
+The videos fail to reject the null hypothesis for both of the features used above. However, the videos also subset to use only 150 records from the `gss2016` dataframe. 
+Here we'll subset to see if we get the same result:
+```{r}
+gss2016_al150 <- gss2016_al %>%
+  sample_n( 150 )
+
+# Calculate and save proportion that believe
+p_hat <- gss2016_al %>%
+  dplyr::summarize(prop_yes = mean(  postlife == 'YES')) %>%
+  pull()
+
+# Generate null distribution
+null <- gss2016_al150 %>%
+  specify(response = postlife, success = "YES") %>%
+  hypothesize(null = "point", p = 0.75) %>%
+  generate(reps = 1000, type = "simulate") %>%
+  # Calculate proportions
+  calculate(stat = 'prop')
+
+# Visualize null distribution
+ggplot( null, aes( x = stat )) +
+  # Add density layer
+  geom_density() +
+  # Add line at observed
+  geom_vline(xintercept = p_hat, color = "red")
+
+null %>%
+  summarize(
+    # Compute the one-tailed p-value
+    one_tailed_pval = mean(stat >= p_hat),
+    # Compute the two-tailed p-value
+    two_tailed_pval = 2 * one_tailed_pval
+  ) %>%
+  pull(two_tailed_pval)
+```
+
+that's similar to the result from the DataCamp videos. we could replicate the exact result by using the `id` values to subset the records from `gss2016`. I'm not sure why the DataCamp course uses less data than is available. maybe we'll find out as the course progresses....
+
+
+### Intervals for Differences
+A question in two variables. e.g.: Do men and women believe at different rates?
+
+Let $p$ be the proportion that believe in life after death  
+
+* $H_0 \mbox{ : } p_{female} - p{male} = 0$
+* $H_0 \mbox{ : } p_{female} - p{male} \neq 0$
+
+```{r}
+p1 <- ggplot( gss2016, aes( x = sex, fill = postlife ) ) +
+  geom_bar()
+p2 <- ggplot( gss2016, aes( x = sex, fill = postlife ) ) +
+  geom_bar( position = 'fill' )
+
+grid.arrange( p1, p2, ncol = 2 )
+```
+men and women appear to have different proportions. but is this significant?
+
+calculate the difference in proportions for the 2 genders:
+```{r}
+p_hats <- gss2016 %>%
+  group_by( sex ) %>%
+  summarise( mean( postlife == 'YES', na.rm = TRUE ) ) %>%
+  pull()
+d_hat <- diff( p_hats )
+d_hat
+```
+Now to generate some $H_0$ data:  
+
+* $H_0 \mbox{ : } p_{female} - p_{male} = 0$
+* There is no association between belief in the afterlife and the sex of the subject
+* The variable `postlife` is independent of the variable `sex`
+
+Here we generate the $H_0$ distribution by permutation:
+```{r}
+null <- gss2016 %>% 
+  drop_na( c( postlife, sex ) ) %>%
+  specify( postlife ~ sex, success = 'YES' ) %>%
+  hypothesize( null = 'independence' ) %>%
+  generate( reps = 500, type = 'permute' ) %>%
+  calculate( stat = 'diff in props', order = c('FEMALE','MALE' ) )
+```
+
+let's visualize the distribution
+```{r}
+ggplot( null, aes( x = stat ) ) +
+  geom_density() +
+  geom_vline( xintercept = d_hat, color = 'red' )
+```
+These data suggest that there is a statistically significant difference between the sexes in the belief of life after death. furthermore, by the sign of the difference value we can conclude that more females than males believe in life after death.  
+
+Let's run through the same analysis with a different feature, `cappun`: Is there a difference between males and females when it comes to the proportion of those who support the death penalty for people convicted of murder.
+
+```{r}
+gss2016_cappun <- gss2016 %>%
+  drop_na( cappun )
+# Plot distribution of sex filled by cappun
+ggplot(gss2016_cappun, aes(x = sex, fill = cappun)) +
+  # Add bar layer
+  geom_bar(position = "fill")
+```
+find the sample difference of the $\hat{p}$s
+```{r}
+# Compute two proportions
+p_hats <- gss2016_cappun %>%
+  # Group by sex
+  group_by( sex ) %>%
+  # Calculate proportion that FAVOR
+  summarize(prop_favor = mean( cappun == 'FAVOR')) %>%
+  pull()
+
+# Compute difference in proportions
+d_hat <- diff( p_hats )
+
+# See the result
+d_hat
+```
+**NOTE**: R will do things alphabetically unless it is told otherwise. Therefore, `diff()` takes the difference of females - males.
+
+Great. Now to calculate some $H_0$ data for a distribution
+```{r}
+# Create null distribution
+null <- gss2016_cappun %>%
+  # Specify the response and explanatory as well as the success
+  specify(cappun ~ sex, success = "FAVOR") %>%
+  # Set up null hypothesis
+  hypothesize(null = "independence") %>%
+  # Generate 500 reps by permutation
+  generate(reps = 500, type = "permute") %>%
+  # Calculate the statistics
+  calculate(stat = 'diff in props', order = c("FEMALE", "MALE"))
+
+# Visualize null
+ggplot( null, aes( x= stat)) +
+  # Add density layer
+  geom_density() +
+  # Add red vertical line at obs stat
+  geom_vline(xintercept = d_hat, color = "red")
+```
+calculate the p-val:
+```{r}
+# Compute two-tailed p-value
+null %>%
+  summarise(
+    one_tailed_pval = mean(stat <= d_hat),
+    two_tailed_pval = one_tailed_pval * 2
+  ) %>%
+  pull(two_tailed_pval)
+```
+The p-value is approximately 0. therefore, the observed difference is statistically significantly different from the null hypothesis. Therefore, we can reject $H_0$. **Note**: this is a different result that given in the course exercise, because the couse subsets the data to 150 records whereas the full dataset is used for the above calculations. again, I have no idea why DataCamp course does this.
+
+To illustrate the difference between hypothesis testing and confidence intervals, lets take a look at how to bootstrap to find a CI for an extimate:
+```{r}
+# Create the bootstrap distribution
+boot <- gss2016_cappun %>%
+  # Specify the variables and success
+  specify( cappun ~ sex, success = "FAVOR") %>%
+  # Generate 500 bootstrap reps
+  generate( reps = 500, type = 'bootstrap' ) %>%
+  # Calculate statistics
+  calculate(stat = "diff in props", order = c("FEMALE", "MALE"))
+
+    
+# Compute the standard error
+SE <- boot %>%
+  summarize(se = sd( stat )) %>%
+  pull()
+  
+# Form the CI (lower, upper)
+c(d_hat - 2*SE, d_hat + 2*SE)
+```
+
+The CI does not span zero. Therefore, zero is not a plausible value; this agrees with the previous hypothesis test.
+
+
+### Statistical Errors
+What is the probability that you will reject a true null hypothesis?  
+What is the probability that you will fail to reject a false null hypothesis? 
+can add a feature with a random fair cointoss to evaluate independence of features
+
+
+
+## Comparing Many Parameters: Independence
+
+
+### Contingency Tables
+
+
+### Chi-Squared Test Statistic
+
+
+### Alternate Method: the Chi-Squared Distribution
+
+
+### Intervals for the Chi-Squared Distribution
+
+
+## Comparing Many Parameters: Goodness of Fit
+
+
+### Goodness of Fit
+
+
+### And now to US
+
+
+### Electrion Fraud in Iran and Iowa: defrief
+
+
+
+
+
+
+<br><br><br>
+
