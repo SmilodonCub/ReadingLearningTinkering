@@ -18,6 +18,10 @@ library( ggplot2 )
 library( gridExtra )
 library( infer )
 library( tidyr )
+library( broom )
+library( gapminder )
+library( tidyverse )
+library( benford.analysis )
 ```
 
 
@@ -522,27 +526,486 @@ can add a feature with a random fair cointoss to evaluate independence of featur
 
 
 ### Contingency Tables
+```{r}
+gss2016 %>%
+  select( partyid, natarms ) %>%
+  glimpse()
+```
+```{r}
+gss2016 %>%
+  drop_na( partyid, natarms ) %>%
+  ggplot( aes( x = partyid, fill = natarms ) ) +
+  geom_bar( position = 'fill' ) +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) 
+```
+let's try to clean the data the way the course does. remap the `partid` values to just 4 values
+```{r}
+gss2016_parties <- gss2016 %>%
+  select( partyid, natarms ) %>%
+  drop_na( partyid, natarms ) %>%
+  mutate( party = case_when( partyid == "INDEPENDENT" ~ "Ind",
+                            partyid == "IND,NEAR DEM" ~ "Ind",
+                            partyid == "IND,NEAR REP" ~ "Ind",
+                            partyid == 'NOT STR DEMOCRAT' ~ 'Dem',
+                            partyid == 'STRONG DEMOCRAT' ~ 'Dem',
+                            partyid == 'NOT STR REPUBLICAN' ~ 'Rep',
+                            partyid == 'STRONG REPUBLICAN' ~ 'Rep',
+                            partyid == 'OTHER PARTY' ~ 'Oth' ),
+          party = as.factor( party )) 
+gss2016_parties %>%
+  ggplot( aes( x = party, fill = natarms ) ) +
+  geom_bar(  ) +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) 
+```
+Well, that's as close as I can come without details of how DataCamp processed the dataframe.  
+The course uses a smaller subset of the data, this code uses the whole set
+
+now to visualize as a contingency table:
+```{r}
+glimpse( gss2016_parties )
+tab <- gss2016_parties %>%
+  select( natarms, party ) %>%
+  table()
+tab
+```
+```{r}
+colSums( tab )
+```
+
+We can see that the `Oth` category is much smaller than the others.  
+
+Can shift back to a dataframe form for plotting with the `tidy()` function:
+```{r}
+tab %>%
+  tidy() %>%
+  uncount( n ) %>%
+  head()
+```
+
+Now do a similar visualization to look at how people from different political parties think about spending for space exploration:
+```{r}
+# Subset data
+gss_party <- gss2016 %>%
+  select( partyid, natspac ) %>%
+  drop_na( partyid, natspac ) %>%
+  mutate( party = case_when( partyid == "INDEPENDENT" ~ "Ind",
+                            partyid == "IND,NEAR DEM" ~ "Ind",
+                            partyid == "IND,NEAR REP" ~ "Ind",
+                            partyid == 'NOT STR DEMOCRAT' ~ 'Dem',
+                            partyid == 'STRONG DEMOCRAT' ~ 'Dem',
+                            partyid == 'NOT STR REPUBLICAN' ~ 'Rep',
+                            partyid == 'STRONG REPUBLICAN' ~ 'Rep',
+                            partyid == 'OTHER PARTY' ~ 'Oth' ),
+          party = as.factor( party )) %>%
+  # Filter out the "Oth"
+  filter( party != 'Oth' )
+
+# Visualize distribution 
+partyspac <- gss_party %>%
+  ggplot( aes( x = party, fill = natspac ) ) +
+  # Add bar layer of counts
+  geom_bar( position = 'fill') +
+  geom_text(aes(label = ..count..), stat = "count", position = "fill")
+partyspac
+```
+This plot shows the filled histogram along with the contingency table values.
 
 
 ### Chi-Squared Test Statistic
 
+compare the two plots for the opinions on funding for military or space exploration by party affiliation:
+```{r}
+partyarms <- gss2016_parties %>%
+  filter( party != 'Oth' ) %>%
+  ggplot( aes( x = party, fill = natarms ) ) +
+  geom_bar( position = 'fill' ) +
+  theme(axis.text.x=element_text(angle=45,hjust=1)) +
+  geom_text(aes(label = ..count..), stat = "count", position = "fill")
+
+grid.arrange( partyarms, partyspac, ncol = 2 )
+```
+How different are these distributions from a null distribution which shows no difference between party affiliation and opinions on spending. We need the expected counts if the variables are independent of one another.  
+
+The $\chi^2$ statistic summarizes the squared & normalized distances of the sample proportions from the expected value.
+
+How to find the expected values for the null hypothesis?....permutation
+```{r}
+#an example permutation
+perm_1 <- gss2016_parties %>%
+  filter( party != 'Oth' ) %>%
+  specify(natarms ~ party) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1, type = "permute")
+  
+# Visualize permuted data
+ggplot( perm_1, aes( x = party, fill = natarms ) ) +
+  # Add bar layer
+  geom_bar( position = 'fill' ) +
+  geom_text(aes(label = ..count..), stat = "count", position = "fill")
+```
+
+compute the $\chi^2$-statistic:
+```{r}
+chi_obs_arms <- gss2016_parties %>% chisq_stat( natarms ~ party )
+gss_party %>% chisq_stat( natspac ~ party )
+chi_obs_spac <- 1.32606
+```
+
+lets observe many more permutations:
+```{r}
+# Create null
+null_spac <- gss_party %>%
+  specify(natspac ~ party) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 500, type = "permute") %>%
+  calculate(stat = "Chisq")
+
+# Visualize null
+ggplot( null_spac, aes( x = stat ) ) +
+  # Add density layer
+  geom_density() +
+  # Add vertical line at obs stat
+  geom_vline( xintercept = chi_obs_spac, color = 'red' ) +
+  theme_classic()
+```
+```{r}
+# Create null that natarms and party are indep
+null_arms <- gss2016_parties %>%
+  specify(natarms ~ party) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 500, type = "permute") %>%
+  calculate(stat = "Chisq")
+  
+# Visualize null
+ggplot(null_arms, aes(x = stat)) +
+  # Add density layer
+  geom_density() +
+  # Add vertical red line at obs stat
+  geom_vline(xintercept = chi_obs_arms, color = "red")
+```
+The `natarms` statistic deviates way further from the null distribution compared to the `natspac` statistic. It seems that spending on the military is a partisan issue, while spending on space exploration is not.
+
 
 ### Alternate Method: the Chi-Squared Distribution
+an approximation method for $\chi^2$  
+
+* statistics: $\hat{x}^2$
+* shape is determined by the degrees of freedom
+* $df = (nrows  -1) \cdot (ncols-1)$
+
+visualize the permutation distribution w/the approximation:
+
+```{r}
+ggplot( null_spac, aes( x = stat ) ) +
+  geom_density() +
+  stat_function(
+    fun = dchisq,
+    args = list( df = 4 ),
+    color = 'blue'
+  ) +
+  geom_vline( xintercept = chi_obs_spac, color = 'red' )
+```
+The two distributions are very close.  
+
+calculate the p-value:
+```{r}
+1 - pchisq( chi_obs_spac, df = 4 )
+```
+
+When to use $\chi^2$:  
+
+* when the counts is $\geq$ 5 for each cell of the contingency table
+* degrees of freedom, $df \geq 2$
+
+
+Does this data set provide evidence of an association between happiness and geography?
+```{r}
+# Visualize distribution of region and happy
+ggplot( gss2016, aes( x = region, fill = happy ) ) +
+  # Add bar layer of proportions
+  geom_bar( position = 'fill' ) +
+  theme(axis.text.x=element_text(angle=45,hjust=1))
+  
+# Calculate and save observed statistic
+chi_obs <- gss2016 %>%
+  chisq_stat( happy ~ region)
+
+# See the result
+chi_obs
+```
+
 
 
 ### Intervals for the Chi-Squared Distribution
-
+They don't exist. Don't do them.
 
 ## Comparing Many Parameters: Goodness of Fit
+
+### Case Study: election fraud
+
+Benford's lay: the first digit law  
+In a free and fair election, the vote counts should follow Benford's Law.  
+If the election was fraudulent, then the vote counts should not follow Benford's law.
+```{r}
+firstgap <- gapminder %>%
+  filter( year == 2007 ) %>%
+  select( country, pop ) %>%
+  mutate( strpop = as.character( pop ),
+          strpop = as.numeric( str_sub( strpop, 1, 1 ) ) )
+
+head( firstgap )
+
+ggplot( firstgap, aes( x = strpop ) ) +
+  geom_bar() +
+  ggtitle( 'Country populations' ) +
+  xlab( 'first digit' ) +
+  theme_classic()
+```
+
+Take a look at the voting data for an election in `iran`
+```{r}
+url <- 'https://assets.datacamp.com/production/repositories/1703/datasets/a777b2366f4e576da5d58fda42f8337332acd3ae/iran.csv'
+iran <- read.csv( url )
+glimpse( iran )
+```
+```{r}
+# Compute and save candidate totals
+totals <- iran %>%
+  summarise(ahmadinejad = sum( ahmadinejad ),
+            rezai = sum( rezai),
+            karrubi = sum( karrubi ),
+            mousavi = sum(mousavi))
+
+# Gather data
+gathered_totals <- totals %>%
+  gather(key = 'candidate', value = 'votes') %>%
+  arrange( desc( votes ) )
+
+# Inspect gathered totals
+gathered_totals
+
+# Plot total votes for each candidate
+ggplot( gathered_totals, aes( x = reorder( candidate, -votes ), y = votes )) +
+  # Add col layer
+  geom_col( stat = 'identity' ) +
+  xlab( 'candidate' ) +
+  theme_classic()
+```
+
+Now to break the votes down by province:
+```{r}
+# Construct province-level dataset
+province_totals <- iran %>%
+  # Group by province
+  group_by( province ) %>%
+  # Sum up votes for top two candidates
+  summarise( ahmadinejad = sum( ahmadinejad ), mousavi = sum( mousavi ) ) 
+
+# Filter for won provinces won by #2
+province_totals %>%
+  filter(mousavi > ahmadinejad)
+```
+a couple of provinces were won by Mousavi.
 
 
 ### Goodness of Fit
 
+Let's take a look at the first digits for the total counts of votes by region:
+```{r}
+glimpse( iran )
+# Create first_digit variable
+iran <- iran %>%
+  mutate( first_digit = as.character( total_votes_cast ),
+          first_digit = as.factor( str_sub( first_digit, 1, 1 ) ) )
+  
+# Check if get_first worked
+iran %>%
+  select( total_votes_cast, first_digit )
+
+# Construct bar plot
+ggplot( iran, aes( x = first_digit )) +
+  # Add bar layer
+  geom_bar() +
+  theme_classic()
+```
+
+```{r}
+bfd_iran <- benford( iran$total_votes_cast)
+plot( bfd_iran )
+```
+There are some deviations from benford's law (many of the data points are above the expected value given by the dashed red lines)
+
+```{r}
+bfd_iran
+```
+Let's used the $\chi^2$ test to evaluate the goodness of fit for benford's law to our data.
+Here's an example of finding the $\chi^2$ to compare the uniformity of party affiliation:
+```{r}
+gss2016_parties_noOth <- gss2016_parties %>%
+  filter( party != 'Oth' ) %>%
+  droplevels()
+
+gss2016_parties_noOth %>%
+  ggplot( aes( x = party )) +
+  geom_bar() +
+  geom_hline( yintercept =  1350/3, color = 'goldenrod', size = 2 )
+```
+```{r}
+tab <- gss2016_parties_noOth %>%
+  select( party ) %>%
+  table()
+tab
+
+p_uniform <- c( Dem = 1/3, Ind = 1/3, Rep = 1/3 )
+chisq.test( tab, p = p_uniform )$stat
+```
+How to test this?...try simulating the null hypothesis
+```{r}
+sims <- gss2016_parties_noOth %>%
+  specify( response = party ) %>%
+  hypothesise( null = 'point', p = p_uniform ) %>%
+  generate( reps = 1, type = 'simulate' )
+glimpse( sims )
+
+ggplot( sims, aes( x = party) ) +
+  geom_bar()
+```
+This plot looks a lot closer to the null. How let's permute many more times to generate a null distribution:
+
+```{r}
+p_benford <- c( `1` = 0.30103000, `2` = 0.17609126, `3` = 0.12493874,
+                `4` = 0.09691001, `5` = 0.07918125, `6` = 0.06694679,
+                `7` = 0.05799195, `8` = 0.05115252, `9` = 0.04575749 )
+
+# Compute observed stat
+chi_obs_stat <- iran %>%
+  chisq_stat(response = first_digit, p = p_benford)
+#chi_obs_stat
+
+# Form null distribution
+null <- iran %>%
+  # Specify the response
+  specify( response = first_digit ) %>%
+  # Set up the null hypothesis
+  hypothesize( null = 'point', p = p_benford ) %>%
+  # Generate 500 reps
+  generate( reps = 500, type = 'simulate' ) %>%
+  # Calculate statistics
+  calculate( stat = 'Chisq' )
+```
+
+```{r}
+# Compute degrees of freedom
+degrees_of_freedom <- iran %>%
+  # Pull out first_digit vector
+  pull("first_digit") %>%
+  nlevels() -1
+
+
+# Plot both null dists
+ggplot( null, aes( x = stat )) +
+  # Add density layer
+  geom_density() +
+  # Add vertical line at obs stat
+  geom_vline( xintercept = chi_obs_stat) +
+  # Overlay chisq approx
+  stat_function(fun = dchisq, args = list(df = degrees_of_freedom), color = "blue")
+```
+```{r}
+# Permutation p-value
+null %>% summarize(pval = mean( stat > chi_obs_stat ))
+  
+# Approximation p-value
+1 - pchisq( chi_obs_stat, df = degrees_of_freedom )
+```
+The low p-value suggests that the results are inconsistent with benson's law.
+
 
 ### And now to US
 
+Let's compare our analysis for the Iranian election with data from a US election
 
-### Electrion Fraud in Iran and Iowa: defrief
+```{r}
+url <- 'https://assets.datacamp.com/production/repositories/1703/datasets/3e73a6c4432671bff5e6f05d340ac1ee41f2ba76/iowa.csv'
+iowa <- read.csv( url, colClasses = c( 'factor', 'factor', 'factor', 'factor', 'numeric' ) )
+glimpse( iowa )
+```
+
+Let's look at the Iowa votes totals for R/D presidential/vpres candidates by county:
+```{r}
+# Get Iowa county vote totals
+iowa_county <- iowa %>%
+  # Filter for rep/dem
+  filter(candidate %in% c("Donald Trump / Mike Pence", "Hillary Clinton / Tim Kaine")) %>%
+  # Group by county
+  group_by( county ) %>%
+  # Compute total votes in each county
+  summarise(dem_rep_votes = sum( votes ))
+  
+# See the result
+iowa_county
+```
+Now add a column with the first digit for each vote total:
+```{r}
+# Create first_digit variable
+iowa_county <- iowa_county %>%
+  mutate( first_digit = as.character( dem_rep_votes ),
+          first_digit = as.factor( str_sub( first_digit, 1, 1 ) ) )
+
+# Using iowa_county, plot first_digit
+ggplot( iowa_county, aes( x = first_digit ) ) +
+  # Add bar layer
+  geom_bar()
+```
+Now to evaluate the diviation of the iowa data from the benford prediction with a $\chi^2$ hypothesis test:
+
+```{r}
+# Compute observed stat
+chi_obs_stat <- iowa_county %>%
+  chisq_stat(response = first_digit, p = p_benford)
+
+# Form null distribution
+null <- iowa_county %>%
+  # Specify response
+  specify( response = first_digit ) %>%
+  # Set up null
+  hypothesize( null = 'point', p = p_benford ) %>%
+  # Generate 500 reps
+  generate( reps = 5000, type = 'simulate' ) %>%
+  # Calculate statistics
+  calculate( stat = 'Chisq' )
+
+# Visualize null stat
+ggplot( null, aes( x = stat ) ) +
+  # Add density layer
+  geom_density() +
+  # Add vertical line at observed stat
+  geom_vline( xintercept = chi_obs_stat )
+```
+calculate the p-value:
+```{r}
+# Permutation p-value
+null %>% summarize(pval = mean( stat > chi_obs_stat ))
+
+# Compute degrees of freedom
+degrees_of_freedom <- iowa_county %>%
+  # Pull out first_digit vector
+  pull("first_digit") %>%
+  nlevels() -1
+
+# Approximation p-value
+1 - pchisq( chi_obs_stat, df = degrees_of_freedom )
+```
+The low p-value indicates that if in fact there was election fraud in Iowa, there would be a very small probability of observing this data or more extreme. Because the observed statistic is far into the tails of the null distribution, this indicates that your data is inconsistent with the null hypothesis that Benford's Law applies to vote totals in Iowa.
+
+
+### Electrion Fraud in Iran and Iowa: debrief
+What went wrong?
+maybe Benfords Law doesn't apply to vote totals?
+probably didn't have enough data
+
+
+
 
 
 
