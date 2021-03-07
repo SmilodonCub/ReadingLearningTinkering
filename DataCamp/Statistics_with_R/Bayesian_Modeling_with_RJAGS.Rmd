@@ -1,0 +1,1053 @@
+---
+title: 'Bayesian Modeling with `RJAGS`'
+subtitle: 'DataCamp: Statistics with `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+![](https://www.kdnuggets.com/wp-content/uploads/datacamp-logo.png){width=150%}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+
+library( dplyr )
+library( ggplot2 )
+library( gridExtra )
+library( tidyr )
+library( broom )
+library( tidyverse )
+library( ggridges )
+library( rjags )
+library( openintro )
+library( mosaicData )
+```
+
+
+## Introduction to Bayesian Modeling
+
+
+### The Prior Model
+Bayesian Modeling with `RJAGS`  
+Explore foundational, generalizable bayesian models (eg: Beta-binomial, Normal-normal and Bayesian regressian).  
+Define, compile and simulate Bayesian models using `RJAGS`  
+Use simulation to conduct Bayesian posteriro inference using `RJAGS` output.  
+
+The power of Bayesian Models: not only does the bayesian model include insights from the prior data, it continues to evolve as new data are incorporated
+
+Building a prior model.  
+Tuning a prior model: look at alternative models  
+
+Simulating a Beta prior distribution:  
+approximate the Beta(45, 55) prior using random samples from the `rbeta()` function.
+```{r}
+# Sample 10000 draws from Beta(45,55) prior
+prior_A <- rbeta(n = 10000, shape1 = 45, shape2 = 55)
+
+# Store the results in a data frame
+prior_sim <- data.frame(prior_A)
+
+# Construct a density plot of the prior sample
+ggplot(prior_sim, aes(x = prior_A)) + 
+  geom_density() +
+  theme_classic() +
+  ggtitle( 'Simulated Beta prior', subtitle = 'the distribution approximates the features of the Beta(45,55) prior.' )
+```
+
+Compare and contrast different Beta priors.  
+You can tune the Beta shape parameters  and  to produce alternative prior models.
+```{r}
+# Sample 10000 draws from the Beta(1,1) prior
+prior_B <- rbeta(n = 10000, shape1 = 1, shape2 = 1)    
+
+# Sample 10000 draws from the Beta(100,100) prior
+prior_C <- rbeta(n = 10000, shape1 = 100, shape2 = 100)
+
+# Sample 10000 draws from the Beta(1,5) prior
+prior_D <- rbeta(n = 10000, shape1 = 1, shape2 = 5)    
+
+# Sample 10000 draws from the Beta(7,3) prior
+prior_E <- rbeta(n = 10000, shape1 = 7, shape2 = 3)
+
+# Combine the results in a single data frame
+prior_sim <- data.frame(samples = c(prior_A, prior_B, prior_C, prior_D, prior_E),
+        priors = rep(c("A","B","C","D","E"), each = 10000))
+
+# Plot the 3 priors
+ggplot(prior_sim, aes(x = samples, fill = priors)) + 
+  geom_density(alpha = 0.5) +
+  theme_classic() +
+  ggtitle( 'Tuning different priors' )
+```
+
+
+### Data & Likelihood 
+
+Modeling the dependence of X on p:  
+
+* observations are independent 
+* each observation has a probability of success, $p$
+* *i.e.*: the conditional distribution of $X$ given $p$ is given by the binomial distribution: 
+  + $X \sim \mbox{Bin}(n,p)$
+  
+What is the likelihood of success given an observation?  
+**Likelihood** summarizes the likelihood of observing polling data $X$ under different values of the underlying support parameter $p$. It is a function of $p$. The likelihood is a function of $p$ that depends on the observed data, $X$. the likelihood plays an important role in quantifying insights from the data at hand.  
+
+Simulating the dependence on $X$ on $p$: simulate the Binomial model using random samples from the rbinom(n, size, prob) function.
+```{r}
+# Define a vector of 1000 p values    
+p_grid <- seq(from = 0, to = 1, length.out = 1000)
+
+# Simulate 1 poll result for each p in p_grid  
+poll_result <- rbinom( 1000, 10, p_grid ) #10 independent trials
+
+# Create likelihood_sim data frame
+likelihood_sim <- data.frame(p_grid, poll_result)    
+
+# Density plots of p_grid grouped by poll_result
+ggplot(likelihood_sim, aes(x = p_grid, y = poll_result, group = poll_result)) + 
+    geom_density_ridges()
+```
+
+Approximating the likelihood function
+```{r}
+# Density plots of p_grid grouped by poll_result. highlight the distribution that corresponds to the observed result
+ggplot(likelihood_sim, aes(x = p_grid, y = poll_result, group = poll_result, fill = poll_result == 6 )) + 
+    geom_density_ridges()
+```
+
+
+### The Posterior Model  
+
+* The Prior contributes knowledge that was known before the most recent observation.  
+* The likelihood contributes knowledge that reflect the current observed data.  
+* The **Posterior** combines the insights from the Prior & Likelihood.
+  + $\mbox{posterior}  \propto \mbox{prior} \cdot \mbox{likelihood}$
+  + the posterior is proportional to the product of the prior and the likelihood
+  
+Using `RJAGS`:  
+STEP 1: Define the Model
+```{r}
+#define the model
+vote_model <- "model{
+  #Likelihood model for X
+  X ~ dbin( p,n )
+  
+  #Prio model for p
+  p ~ dbeta( a,b )
+}"
+```
+
+STEP 2: Compile the Model
+```{r}
+vote_jags_A <- jags.model( textConnection( vote_model ),
+                           data = list( a = 45, b = 55, X = 6, n = 10 ),
+                           inits = list( .RNG.name = "base::Wichmann-Hill", .RNG.seed = 100 ) )
+```
+
+STEP 3: Simulate the Posterior
+```{r}
+vote_sim <- coda.samples( model = vote_jags_A,
+                          variable.names = c( "p" ),
+                          n.iter = 10000 )
+```
+STEP 4: Visualize the resulting distribution
+```{r}
+plot( vote_sim, trace = FALSE )
+```
+This approximates the posterior model of the system  
+
+Now to look at how using a different prior model or observing new data (or a combination of the two!) might impact the posterior. Re-compile, simulate, and plot the  posterior to reflect the setting in which you start with a Beta(1,1) prior but observe the same polling data...
+```{r}
+# COMPILE the model    
+vote_jags <- jags.model(textConnection(vote_model), 
+    data = list(a = 1, b = 1, X = 6, n = 10),
+    inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 100))
+
+# SIMULATE the posterior
+vote_sim2 <- coda.samples(model = vote_jags, variable.names = c("p"), n.iter = 10000)
+
+# PLOT the posterior
+plot(vote_sim2, trace = FALSE, xlim = c(0,1), ylim = c(0,18))
+```
+
+In a new poll, 214 of 390 voters support you.
+```{r}
+# COMPILE the model    
+vote_jags <- jags.model(textConnection(vote_model), 
+    data = list(a = 1, b = 1, X = 220, n = 400), #combine results with the previous observation (6/10)
+    inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 100))
+
+# SIMULATE the posterior
+vote_sim4 <- coda.samples(model = vote_jags, variable.names = c("p"), n.iter = 10000)
+
+# PLOT the posterior
+plot(vote_sim4, trace = FALSE, xlim = c(0,1), ylim = c(0,18))
+```
+
+Finally, recompile with the original prior model
+```{r}
+# COMPILE the model    
+vote_jags <- jags.model(textConnection(vote_model), 
+    data = list(a = 45, b = 55, X = 220, n = 400),
+    inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 100))
+
+# SIMULATE the posterior
+vote_sim3 <- coda.samples(model = vote_jags, variable.names = c("p"), n.iter = 10000)
+
+# PLOT the posterior
+plot(vote_sim3, trace = FALSE, xlim = c(0,1), ylim = c(0,18))
+```
+
+Revisualize in a way that gets the exercises point across:
+```{r}
+distros <- data.frame( 'prior_A' = prior_A, 'prior_B' = prior_B, 'samples' = seq( 1, 10000 )/10000,
+                      'like1_B1' = vote_sim[[1]], 'like1_B2' = vote_sim2[[1]], 
+                      'like2_B1' = vote_sim3[[1]], 'like2_B2' = vote_sim4[[1]] )
+#glimpse( distros )
+
+pp <- ggplot( distros, aes( x = prior_A ) ) +
+  geom_density() + 
+  geom_density( aes( x = prior_B ), color = 'red' )
+l1 <- ggplot( distros, aes( x = p ) ) +
+  geom_density() + 
+  geom_density( aes( x = p.1 ), color = 'red' )
+l2 <- ggplot( distros, aes( x = p.2 ) ) +
+  geom_density() + 
+  geom_density( aes( x = p.3 ), color = 'red' )
+
+grid.arrange( pp, l1, l2, ncol = 3 )
+```
+The figure above reveals some interesting behavior:  
+
+* Even with the same data, different priors lead to different posteriors
+* The influence of the prior on the posterior diminishes as the sample size of the data increases
+* As the sample size increases, the posterior becomes more precise
+
+## Bayesian Models and Markov Chains 
+
+### The Normal-Normal model
+Engineering the two-parameter Normal-Normal model.
+Have to assume the response variable is normally distributed.  
+
+An example with a sleep deprivation study.  
+Prior Information:  
+
+* With normal sleep, average reaction time is $\sim$250 ms
+* Expect the average to increase by $\sim$50 ms with sleep deprivation
+* Average is unlikely to decrease and unlikely to increase by $\geq \sim150$ ms
+* this corresponds to $m \sim \mbox{N}(50,25^2)$
+
+The standard deviation of reaction time:  
+
+* s $\get$ 0
+* With normal sleep, s.d. in reaction times is 30 ms.
+* s is euqally likely to be anywhere from 0 to 200 ms.
+
+Simulate some Normal-Normal priors:
+```{r}
+# Take 10000 samples from the m prior
+prior_m <- rnorm( 10000, 50, 25 )
+
+# Take 10000 samples from the s prior 
+prior_s <- runif( 10000, 0, 200 )   
+
+
+# Store samples in a data frame
+samples <- data.frame(prior_m, prior_s)
+
+# Density plots of the prior_m & prior_s samples    
+pm <- ggplot(samples, aes(x = prior_m)) + 
+  geom_density() +
+  ylim( c( 0, 0.02 ) ) +
+  theme_classic()
+ps <- ggplot(samples, aes(x = prior_s)) + 
+  geom_density() +
+  ylim( c( 0, 0.02 ) ) +
+  theme_classic()
+
+grid.arrange( pm, ps, ncol = 2 )
+```
+The above distributions approximate the features of the Normal prior m and the uniform prior s.
+
+Now to look at the sleep study data:
+```{r}
+path <- '/home/bonzilla/Documents/ReadingLearningTinkering/DataCamp/Statistics_with_R/sleep_study.csv'
+sleep_study <- read.csv( path )
+glimpse( sleep_study )
+```
+```{r}
+# Check out the first 6 rows of sleep_study
+head( sleep_study )
+
+# Define diff_3
+sleep_study <- sleep_study %>% 
+    mutate(diff_3 = day_3 - day_0 )
+ 
+# Histogram of diff_3    
+ggplot(sleep_study, aes(x = diff_3 )) + 
+    geom_histogram(binwidth = 20, color = "white")
+
+# Mean and standard deviation of diff_3
+sleep_study %>% 
+    summarize(mean( diff_3 ), sd( diff_3 ))
+```
+
+
+### Simulating the Normal-Normal in RJAGS
+STEP 1: Define the Normal-Normal model string:
+```{r}
+sleep_model <- "model{
+  #Likelihood model for Y[i]
+  for( i in 1:length(Y)) {
+    Y[i] ~ dnorm( m, s^(-2))
+  }
+
+  #Prior models for m and s
+  m ~ dnorm( 50, 25^(-2))
+  s ~ dunif( 0, 200 )
+}"
+```
+
+STEP 2: Compile the model
+```{r}
+sleep_jags <- jags.model( textConnection( sleep_model ),
+                          data = list( Y = sleep_study$diff_3 ),
+                          inits = list( .RNG.name = "base::Wichmann-Hill",
+                                        .RNG.seed = 1989 ))
+```
+
+STEP 3: Simulate the Normal-Normal posterior
+```{r}
+sleep_sim <- coda.samples( model = sleep_jags,
+                           variable.names = c( "m", "s"),
+                           n.iter = 10000 )
+```
+STEP 4: visualize the result:
+```{r}
+post_m <- sleep_sim[[1]][,1]
+post_s <- sleep_sim[[1]][,2]
+likeli_m <- mean( sleep_study$diff_3 )
+likeli_s <- sd( sleep_study$diff_3 )
+likeli <- rnorm( 10000, likeli_m, likeli_s )
+# Store samples in a data frame
+samples <- data.frame(prior_m, prior_s, post_m, post_s, likeli )
+
+# Density plots of the prior_m & prior_s samples    
+pm <- ggplot(samples, aes(x = prior_m)) + 
+  geom_density() +
+  geom_density( aes( x = post_m ), color = 'red') +
+  geom_density( aes( x = likeli ), color = 'blue') +
+  ylim( c( 0, 0.1 ) ) +
+  theme_classic()
+ps <- ggplot(samples, aes(x = prior_s)) + 
+  geom_density() +
+  geom_density( aes( x = post_s ), color = 'red') +
+  geom_density( aes( x = likeli ), color = 'blue') +
+  ylim( c( 0, 0.1 ) ) +
+  theme_classic()
+
+grid.arrange( pm, ps, ncol = 2 )
+```
+
+
+### Markov Chains
+the posterior distribution result generated by `RJAGS` is NOT a random sample of the posterior. Rather, m and s are Markov chain generated. Markov chains approximate the posteriors that are otherwise too complicated to define or sample. In Markov chains, each value is dependent on the previous.
+
+Markov Chain trace plot:
+look at all steps of the Markov chain:
+```{r}
+mcm <- ggplot(samples, aes(x = seq( 1, 10000 ), y = post_m)) + 
+  geom_point() +
+  geom_line() +
+  theme_classic()
+mcs <- ggplot(samples, aes(x = seq( 1, 10000 ), y = post_s)) + 
+  geom_point() +
+  geom_line() +
+  theme_classic()
+
+grid.arrange( mcm, mcs, ncol = 1 )
+```
+The above plots show the longitudinal behavior of the markov Chain.  
+
+The Markov Distribution:
+```{r}
+mcdm <- ggplot(samples, aes( x = post_m)) + 
+  geom_histogram() +
+  theme_classic()
+mcds <- ggplot(samples, aes(x = post_s)) + 
+  geom_histogram() +
+  theme_classic()
+
+grid.arrange( mcdm, mcds, ncol = 1 )
+```
+
+After 10,000 iterations, the markov chain values are roughly normally distributed.
+
+**The Markov chain traverses the sample space of the variable and in so doing mimics a random sample which, with enough samples, converges to the posterior.**
+
+
+### Markov Chain Diagnostics & Reproducibility  
+
+* What does a 'good' Markov chain look like?
+  + is the trace stable across iterations
+* How accurate is the Markov chain approximation to the posteriors?
+* For how many iterations should we run the markov chain?
+
+Diagnostic: Multiple chains  
+`sleep_jags <- jags.model(...,n.chains = 4 )`
+
+```{r}
+# COMPILE the model
+sleep_jags_multi <- jags.model(textConnection(sleep_model), data = list(Y = sleep_study$diff_3), n.chains = 4)   
+
+# SIMULATE the posterior    
+sleep_sim_multi <- coda.samples(model = sleep_jags_multi, variable.names = c("m", "s"), n.iter = 1000)
+
+# Check out the head of sleep_sim_multi
+head( sleep_sim_multi )
+
+
+# Construct trace plots of the m and s chains
+plot( sleep_sim_multi, density = FALSE )
+```
+
+Note that there is similarity and stability among the parallel chains.
+
+
+## Bayesian Inference & Prediction
+
+
+### A simple Bayesian Regression Model
+engineering a simple Bayesian regression model.
+
+likelihood structure:
+$$Y_i \sim N( m_i, s^2)$$
+$$m_i = a + bX_i$$
+
+now to build the priors:  
+
+* a = y-intercept; value of $m_i$ when $X_i$ = 0
+* b = slope; rate of change in weight (kg) per 1cm increase in height
+* s = residual standard deviation; individual deviation from trend $m_i$
+
+Priors for the intercept and slope:  
+$$b \sim N(1, 0.5^2)$$
+$$a \sim N(0, 200^2)$$
+
+Prior for the residual standard deviation:  
+(we really don't have a clear idea for this)  
+$$s \sim Unif(0,20)$$
+
+```{r}
+# Take 10000 samples from the a, b, & s priors
+a <- rnorm( 10000, 0, 200 )
+b <- rnorm( 10000, 1, 0.5 )
+s <- runif( 10000, 0, 20 )
+
+# Store samples in a data frame
+samples <- data.frame(set = 1:10000, a, b, s)
+
+# Construct density plots of the prior samples    
+pa <- ggplot(samples, aes(x = a)) + 
+    geom_density()
+pb <- ggplot(samples, aes(x = b)) + 
+    geom_density()
+ps <- ggplot(samples, aes(x = s)) + 
+    geom_density()
+
+grid.arrange( pa, pb, ps, ncol = 3 )
+```
+
+These simulations approximate your prior models of each separate model parameter.
+
+simulate 50 pairs of height and weight for the first 12  sets of prior plausible regression scenarios from `samples`
+Visualize the regression priors:
+```{r}
+#glimpse( samples )
+# Replicate the first 12 parameter sets 50 times each
+prior_scenarios_rep <- bind_rows(replicate(n = 50, expr = samples[1:12, ], simplify = FALSE)) 
+
+# Simulate 50 height & weight data points for each parameter set
+prior_simulation <- prior_scenarios_rep %>% 
+    mutate(height = rnorm(n = 600, mean = 170, sd = 10)) %>% 
+    mutate(weight = rnorm(n = 600, mean = a + b*height, sd = s))
+
+# Plot the simulated data & regression model for each parameter set
+ggplot(prior_simulation, aes(x = height, y = weight)) + 
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE, size = 0.75) + 
+    facet_wrap(~ set)
+```
+
+These 12 plots demonstrate the range of prior plausible models. These models have different intercepts, slopes, and residual standard deviations. Almost all of the models have positive slopes, demonstrating the prior information that there is likely a positive association between weight & height.  
+
+Now lets look at some current data:
+```{r}
+data( bdims )
+glimpse( bdims )
+```
+
+Visualize a scatterplot of the wgt ~ hgt data from `bdims`:
+```{r}
+ggplot(bdims, aes(x = hgt, y = wgt)) + 
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE)
+```
+
+These data support your prior information about a positive association between weight and height and will be used to describe the likelihood for an approximation of the posterior....
+
+### Bayesian Regression in `RJAGS`
+
+Insight from the observed weight & height data:
+```{r}
+wt_mod <- lm( wgt ~ hgt, bdims )
+coef( wt_mod )
+summary( wt_mod )$sigma
+```
+
+STEP 1: Define the regression model
+```{r}
+weight_model <- "model{
+  # Likelihood model for Y[i]
+  for(i in 1:length(Y)) {
+    Y[i] ~ dnorm( m[i], s^(-2))
+    m[i] <- a + b * X[i]
+  }
+
+  #Prior models for a, b, s
+  a ~ dnorm(0, 200^(-2))
+  b ~ dnorm(1, 0.5^(-2))
+  s ~ dunif(0, 20)
+}"
+```
+
+STEP 2: Compile the regression model
+```{r}
+# Compile the mod
+weight_jags <- jags.model( textConnection( weight_model ),
+                           data = list( X = bdims$hgt, Y = bdims$wgt ),
+                           inits = list( .RNG.name = "base::Wichmann-Hill", .RNG.seed = 2018 ))
+```
+
+STEP 3: Simulate the posterior
+```{r}
+weight_sim <- coda.samples( model = weight_jags,
+                            variable.names = c("a", "b", "s"),
+                            n.iter = 1000 )
+```
+
+Visualize the traces
+```{r}
+plot( weight_sim )
+```
+Oooof, the traces for `a` and `b` do not seem to stabilize even after 10000 iterations
+
+Addressing Markov chain instability:  
+
+* Standardize the height predictor (subtract the mean and divide by the standard deviation)
+* or be lazy and just see how the chain behaves after many more iterations
+
+Let's be lazy:
+```{r}
+weight_sim <- coda.samples( model = weight_jags,
+                            variable.names = c("a", "b", "s"),
+                            n.iter = 100000 )
+plot( weight_sim )
+```
+
+Okay, so things luckily seem to stabilize after 100,000 iterations
+
+Posterior Insights:
+```{r}
+# Store samples in a data frame
+samples <- data.frame(set = 1:10000, a, b, s, 
+                      pa = weight_sim[[1]][,1],
+                      pb = weight_sim[[1]][,2],
+                      ps = weight_sim[[1]][,3])
+
+# Construct density plots of the prior samples    
+pa <- ggplot(samples, aes(x = a), color = 'red') + 
+  geom_density( fill = 'red' ) +
+  geom_density( aes( x = var1 ), fill = 'blue', color = 'blue' ) +
+  theme_classic()
+pb <- ggplot(samples, aes(x = b)) + 
+  geom_density( fill = 'red', color = 'red') +
+  geom_density( aes( x = var1.1 ), fill = 'blue', color = 'blue' ) +
+  theme_classic()
+ps <- ggplot(samples, aes(x = s)) + 
+  geom_density( fill = 'red', color = 'red') +
+  geom_density( aes( x = var1.2 ), fill = 'blue', color = 'blue' ) +
+  theme_classic()
+
+grid.arrange( pa, pb, ps, ncol = 3 )
+```
+
+```{r}
+# COMPILE the model
+weight_jags_multi <- jags.model(textConnection(weight_model), data = list( X = bdims$hgt, Y = bdims$wgt ), n.chains = 4)   
+
+# SIMULATE the posterior    
+weight_sim_multi <- coda.samples(model = weight_jags_multi, variable.names = c("a", "b", "s"), n.iter = 1000)
+
+# Construct trace plots of the m and s chains
+plot( weight_sim_multi )
+```
+The Markov chains of length 1,000 are too short. They have not stabilized, thus are unlikely to provide a reliable approximation of the posterior.  
+try the same multi, but with 100,000 iterations:
+```{r}
+# COMPILE the model
+weight_jags_multi <- jags.model(textConnection(weight_model), data = list( X = bdims$hgt, Y = bdims$wgt ), n.chains = 4)   
+
+# SIMULATE the posterior    
+weight_sim_multi <- coda.samples(model = weight_jags_multi, variable.names = c("a", "b", "s"), n.iter = 100000)
+
+# Construct trace plots of the m and s chains
+plot( weight_sim_multi )
+```
+
+The Markov chains appear to stabilize after 100,000 iterations, thus provide a more reliable approximation of the posterior.
+
+### Posterior Estimation & Inference
+```{r}
+sum_wsm <- summary( weight_sim_multi )
+sum_wsm
+```
+The means of the posterior distribution give point estimates for these parameters
+
+```{r}
+abs_df <- data.frame( a = weight_sim_multi[[1]][,1], b = weight_sim_multi[[1]][,2], s = weight_sim_multi[[1]][,3] )
+colnames( abs_df ) <- c( 'a', 'b', 's' )
+glimpse( abs_df )
+
+adist <- ggplot( abs_df, aes( x = a ) ) +
+  geom_density() +
+  geom_vline( xintercept = sum_wsm$statistics[1,1], color = 'red' ) +
+  theme_classic()
+bdist <- ggplot( abs_df, aes( x = b ) ) +
+  geom_density() +
+  geom_vline( xintercept = sum_wsm$statistics[2,1], color = 'red' ) +
+  theme_classic()
+sdist <- ggplot( abs_df, aes( x = s ) ) +
+  geom_density() +
+  geom_vline( xintercept = sum_wsm$statistics[3,1], color = 'red' ) +
+  theme_classic()
+
+grid.arrange( adist, bdist, sdist, ncol = 3 )
+```
+
+**Posterior Credible Intervals**
+The upper and lower are given by the 1st and 5th columns for each coef:
+```{r}
+sum_wsm$quantiles
+```
+
+```{r}
+
+adist <- adist +
+  geom_vline( xintercept = sum_wsm$quantiles[1,1], color = 'red', linetype = "dashed" ) +
+  geom_vline( xintercept = sum_wsm$quantiles[1,5], color = 'red', linetype = "dashed" )
+bdist <- bdist +
+  geom_vline( xintercept = sum_wsm$quantiles[2,1], color = 'red', linetype = "dashed" ) +
+  geom_vline( xintercept = sum_wsm$quantiles[2,5], color = 'red', linetype = "dashed" )
+sdist <- sdist +
+  geom_vline( xintercept = sum_wsm$quantiles[3,1], color = 'red', linetype = "dashed" ) +
+  geom_vline( xintercept = sum_wsm$quantiles[3,5], color = 'red', linetype = "dashed" )
+
+grid.arrange( adist, bdist, sdist, ncol = 3 )
+```
+Can use these posterior distributions to test hypotheses
+
+```{r}
+# Plot the posterior mean regression model
+p1 <- ggplot(bdims, aes(x = hgt, y = wgt)) + 
+    geom_point() + 
+    geom_abline(intercept = sum_wsm$statistics[1,1] , slope = sum_wsm$statistics[2,1], color = "red") +
+    theme_classic()
+
+# Visualize the range of 20 posterior regression models
+p2 <- ggplot(bdims, aes(x = hgt, y = wgt)) + 
+    geom_point() + 
+    geom_abline(intercept = weight_sim[[1]][1:20,1], slope = weight_sim[[1]][1:20,2], color = "gray", size = 0.25) +
+    theme_classic()
+
+grid.arrange( p1, p2, ncol = 2 )
+```
+
+Posterior credible intervals
+```{r}
+# Calculate the 90% posterior credible interval for b
+ci_90 <- quantile(weight_sim[[1]][,2], probs = c(0.05, 0.95))
+ci_90
+
+ws_df <- data.frame( weight_sim[[1]] )
+
+# Mark the 90% credible interval 
+ggplot(ws_df, aes(x = b)) + 
+    geom_density() + 
+    geom_vline(xintercept = ci_90, color = "red")
+```
+
+Based on your calculations we can say that there's a 90% (posterior) probability that, on average, the increase in weight per 1 cm increase in height is between 0.93 and 1.08 kg.
+
+What's the posterior probability that, on average, weight increases by more than 1.1 kg for every 1 cm increase in height? That is, what's the posterior probability that $b \gt 1.1$?
+```{r}
+# Mark 1.1 on a posterior density plot for b
+ggplot(ws_df, aes(x = b)) + 
+    geom_density() + 
+    geom_vline(xintercept = 1.1, color = "red")
+
+# Summarize the number of b chain values that exceed 1.1
+table( ws_df$b > 1.1 )
+
+
+# Calculate the proportion of b chain values that exceed 1.1
+mean( ws_df$b > 1.1 )
+```
+
+
+### Posterior Prediction
+EX: calculating the mean weight given that the height = 180cm.  
+We can calculate the weight for each simulated parameter set:
+```{r}
+ws_df <- ws_df %>%
+  mutate( m_180 = a + b * 180 )
+glimpse( ws_df )
+```
+Observe the posterior distribution trend for the mean weight given height = 180cm
+```{r}
+ci_95 <- quantile( ws_df$m_180, c( 0.025, 0.975 ) )
+p1 <- ggplot( ws_df, aes( x = m_180 ) ) +
+  geom_density() +
+  geom_vline( xintercept = mean( ws_df$m_180 ), color = 'red' ) +
+  geom_vline( xintercept = ci_95, color = 'red', linetype = 'dashed' ) +
+  theme_classic()
+p1
+```
+The distribution is approximately normal. The variability about the mean reflects the uncertainty.
+
+Now, instead of understanding the mean weight among 180cm tall adults, let's predict the weight of a 180cm tall individual...to do this we must incorporate residual standard deviation:
+```{r}
+ws_df <- ws_df %>%
+  rowwise() %>%
+  mutate( p_180 = rnorm( n = 1, mean = m_180, sd = s ) )
+
+ci2_95 <- quantile( ws_df$p_180, c( 0.025, 0.975 ) )
+
+p1 + geom_density(data = ws_df, aes( x = p_180 ), color = 'green' ) +
+  geom_vline( xintercept = ci2_95, color = 'green', linetype = 'dashed' )
+  
+```
+As anticipated, this interval is much wider than the interval for the mean since it accommodates for individual deviation from the mean.
+
+```{r}
+
+# Visualize the credible interval on a scatterplot of the data
+ggplot(bdims, aes(x = hgt, y = wgt)) + 
+    geom_point() + 
+    geom_abline(intercept = mean(ws_df$a), slope = mean(ws_df$b), color = "red", size = 1.5) + 
+    geom_segment(x = 180, xend = 180, y = ci2_95[1], yend = ci2_95[2], color = "green", size = 2) +
+    geom_segment(x = 180, xend = 180, y = ci_95[1], yend = ci_95[2], color = "red", size = 1.5) +
+    theme_classic()
+```
+
+
+## Multivariate & Generalized Linear Models
+incorporating categorical predictors into Bayesian models.  
+engineering multivariate Bayesian regressions.  
+extend the repertoire from Normal regression to generalized linear models (e.g. Poisson)
+
+### Bayesian Regression with a Categorical Predictor 
+Here we consider the traffic use data from the Northampton Ma. Bikepath
+```{r}
+data( RailTrail )
+glimpse( RailTrail )
+```
+```{r}
+# Confirm that weekday is a factor variable
+class(RailTrail$weekday)
+
+# Construct a density plot of volume by weekday
+ggplot(RailTrail, aes(x = volume, fill = weekday)) + 
+    geom_density(alpha = 0.5)
+```
+Notice that rail-trail volume tends to be slightly higher on weekends (~430 users per day) than on weekdays (~350 users per day)
+
+* $Y_i \sim N(m_i,s^2)$ where $Y_i$ = trail volume per day.  
+* $X_i$ = 1 for weekdays, 0 for weekends.  
+* $m_i = a + b\cdot X_i$ where a = weekend volume, a+b = weekday volume.  
+* b = the contrast between a typical weekday vs weekend
+* s = residual standard deviation
+
+Prior:  
+
+* Typical weekend volume = 400 users/day, span = 100-700
+  + $a \sim N( 400, 100^2 )$
+* Uncertain about how weekday/weekend compare
+  + $b \sim N(0,200^2)$
+* SD is suggested to be uniform 0-200
+  + $s \sim \mbox{Unif}( 0,200)$
+  
+  
+STEP 1: Define the Bayesian model in RJAGS
+```{r}
+# DEFINE the model    
+rail_model_1 <- "model{
+    # Likelihood model for Y[i]
+    for(i in 1:length(Y)){
+      Y[i] ~ dnorm(m[i],s^(-2))
+      m[i] <- a + b[X[i]]
+    }
+    
+    # Prior models for a, b, s
+    a ~ dnorm(400, 100^(-2))
+    b[1] <- 0
+    b[2] ~ dnorm(0,200^(-2))
+    s ~ dunif(0,200)
+}"
+```
+
+STEP 2: Compile
+```{r}
+# COMPILE the model
+rail_jags_1 <- jags.model(
+  textConnection( rail_model_1 ),
+  data = list( X = factor( RailTrail$weekday ), Y = RailTrail$volume ),
+  inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 123)
+)
+```
+
+STEP 3: Simulate the posterior
+```{r}
+# SIMULATE the posterior    
+rail_sim_1 <- coda.samples(model = rail_jags_1, variable.names = c( 'a','b','s'), n.iter = 10000)
+```
+
+
+```{r}
+# Store the chains in a data frame
+rail_chains_1 <- data.frame( rail_sim_1[[1]] )
+
+# PLOT the posterior
+plot( rail_sim_1 )
+```
+```{r}
+# Construct a chain of values for the typical weekday volume
+rail_chains_1 <- rail_chains_1 %>% 
+    mutate(weekday_mean = a + b.2.)
+
+# Construct a density plot of the weekday chain
+ggplot(rail_chains_1, aes(x = weekday_mean)) + 
+    geom_density()
+
+# 95% credible interval for typical weekday volume
+quantile( rail_chains_1$weekday_mean, c( 0.025, 0.975 ))
+```
+
+
+
+### Multivariate Bayesian Regression
+Adding another predictor to our model:  
+$Z_i$ = high temperature on a given day  
+
+* $Y_i \sim N(m_i,s^2)$
+* $m_i = a + bX_i + cZ_i$
+* Weekends: $m_i = a + cZ_i$
+* Weekdays: $m_i = a + b + cZ_i$
+* a = weekend y-int
+* a+b = weekday y-int
+* b = contrast between weekday vs weekend y-int; the contrast between weekday and weekend for a given temp
+* c = common slope
+* s = residual standard deviation
+
+```{r}
+ggplot( RailTrail, aes( x = hightemp, y = volume, color = weekday ) ) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_classic()
+```
+Notice that for the 90 days in the study period, volume tends to increase with temperature. Further, volume tends to be higher on weekends than on weekdays of the same temperature.
+
+
+STEP 1: Define the Bayesian model in RJAGS
+```{r}
+# DEFINE the model    
+rail_model_2 <- "model{
+    # Likelihood model for Y[i]
+    for(i in 1:length(Y)){
+      Y[i] ~ dnorm(m[i],s^(-2))
+      m[i] <- a + b[X[i]] + c * Z[i]
+    }
+    
+    # Prior models for a, b, s
+    a ~ dnorm(0, 200^(-2))
+    b[1] <- 0
+    b[2] ~ dnorm(0, 200^(-2))
+    c ~ dnorm(0, 20^(-2))
+    s ~ dunif(0,200)
+}"
+```
+
+STEP 2: Compile
+```{r}
+# COMPILE the model
+rail_jags_2 <- jags.model(
+  textConnection( rail_model_2 ),
+  data = list(Y = RailTrail$volume, X = factor(RailTrail$weekday) , Z = RailTrail$hightemp),
+  inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 10)
+)
+```
+
+STEP 3: Simulate the posterior
+```{r}
+# SIMULATE the posterior    
+rail_sim_2 <- coda.samples(model = rail_jags_2, variable.names = c( 'a', 'b', 'c', 's' ), n.iter = 10000)
+```
+
+
+```{r}
+# Store the chains in a data frame
+rail_chains_2 <- data.frame( rail_sim_2[[1]] )
+
+# PLOT the posterior
+plot( rail_sim_2 )
+```
+
+```{r}
+summary( rail_sim_2 )
+```
+
+Typical volume is ~50 less on weekdays than on weekends of the same temperature.
+
+The b coefficient represents the relationship between volume and weekday status when controlling for, or on days with similar hightemp.
+```{r}
+# Plot the posterior mean regression models
+ggplot(RailTrail, aes(x = hightemp, y = volume, color = weekday)) + 
+    geom_point() + 
+    geom_abline(intercept = mean(rail_chains_2$a), slope = mean(rail_chains_2$c), color = "red") + 
+    geom_abline(intercept = mean(rail_chains_2$a) + mean(rail_chains_2$b.2.), slope = mean(rail_chains_2$c), color = "turquoise3")
+```
+Posterior analysis suggests that there's a positive association between volume and temperature. Further, the typical weekday volume is less than that on weekends of the same temperature.
+
+### Bayesian Poisson Regression
+```{r}
+ggplot( RailTrail, aes( x = volume ) ) +
+  geom_histogram( binwidth = 50) +
+  theme_classic()
+```
+Why our normal assumption was not the best: the normal model assumes Y has a continuous scale and can also be negative. However, our target variable cannot take on a negative value.
+
+**The Poisson Model**
+$Y \sim \mbox{Pois}(l)$  
+
+* Y is the # of independent events that occur ina fixed interval
+* *Rate Paramteter* l represents the typical # of events per time interval.
+* $Y_i \sim \mbox{Pois}(l_i) \mbox{ where }l_i \gt0$
+* $log(l_i) = a + bX_i + cZ_i$ use a log link function to link $l_i$ to the linear model
+* $l_i = e^{a +bX_i + cZ_i}$
+
+**Poisson regression in `RJAGS`**  
+
+* $Y_i \sim \mbox{Pois}(l_i)$
+* $log(l_i) = a + bX_i + cZ_i$
+* $a \sim N(0,200)^2$
+* $b \sim N(0,2^2)$
+* $c \sim N(0,2^2)$
+
+Poisson Caveats:  
+
+* Assumption: among days with similar tempteratures and weekday status, variance in $Y_i$ is equal to the mean of $Y_i$
+* Our data demonstrate potential overdispersion - the variance is larger than the mean.
+* It's not a perfect model, but it's a good place to start
+
+STEP 1: Define the Bayesian model in RJAGS
+```{r}
+# DEFINE the model    
+poisson_model <- "model{
+    # Likelihood model for Y[i]
+    for(i in 1:length(Y)){
+      Y[i] ~ dpois(l[i])
+      log(l[i]) <- a + b[X[i]] + c * Z[i]
+    }
+    
+    # Prior models for a, b, s
+    a ~ dnorm(0, 200^(-2))
+    b[1] <- 0
+    b[2] ~ dnorm(0, 2^(-2))
+    c ~ dnorm(0, 2^(-2))
+}"
+```
+
+STEP 2: Compile
+```{r}
+# COMPILE the model
+poisson_jags <- jags.model(
+  textConnection( poisson_model ),
+  data = list(Y = RailTrail$volume, X = factor(RailTrail$weekday) , Z = RailTrail$hightemp),
+  inits = list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 10)
+)
+```
+
+STEP 3: Simulate
+```{r}
+# SIMULATE the posterior    
+poisson_sim <- coda.samples(model = poisson_jags, variable.names = c( 'a', 'b', 'c' ), n.iter = 10000)
+
+# Store the chains in a data frame
+poisson_chains <- data.frame( poisson_sim[[1]] )
+
+# PLOT the posterior
+plot( poisson_sim)
+```
+
+Use these results to plot the posterior Poisson regression trends. These nonlinear trends can be added to a ggplot() using stat_function(). For example, specifying fun = function(x){x^2} would return a quadratic trend line.
+```{r}
+# Plot the posterior mean regression models
+ggplot(RailTrail, aes(x = hightemp, y = volume, color = weekday)) + 
+    geom_point() + 
+    stat_function(fun = function(x){exp(mean(poisson_chains$a) + mean(poisson_chains$c) * x)}, color = "red") + 
+    stat_function(fun = function(x){exp(mean(poisson_chains$a) + mean(poisson_chains$b.2.) + mean(poisson_chains$c) * x)}, color = "turquoise3")
+```
+Unlike the Normal regression trend, the Poisson regression trend is curved.
+
+```{r}
+# Calculate the typical volume on 80 degree weekends & 80 degree weekdays
+poisson_chains <- poisson_chains %>% 
+    mutate(l_weekend = exp(a + c * 80)) %>% 
+    mutate(l_weekday = exp(a + b.2. + c * 80))
+
+# Construct a 95% CI for typical volume on 80 degree weekend
+quantile( poisson_chains$l_weekend, c( 0.025, 0.975 ) )
+
+# Construct a 95% CI for typical volume on 80 degree weekday
+quantile( poisson_chains$l_weekday, c( 0.025, 0.975 ) )
+```
+
+Posterior Poisson Prediction
+```{r}
+# Simulate weekday predictions under each parameter set
+poisson_chains <- poisson_chains %>% 
+    mutate(Y_weekday = rpois(n = 10000, lambda = l_weekday))
+    
+# Construct a density plot of the posterior weekday predictions
+ggplot(poisson_chains, aes(x = Y_weekday)) + 
+    geom_density()
+    
+# Posterior probability that weekday volume is less 400
+mean(poisson_chains$Y_weekday < 400)
+```
+
+### Conclusion
+Here we:  
+
+* defined, compiled & simulated intractable Bayesian models
+* explored the Markiv chain mechanics behind `RJAGS` simulation
+* used Bayesian modeling to combine insights from your data and priors to inform posterior insights
+* conducted intuitive posterior inferences: credible & predictive intervals
+
+<br><br><br>
+
+
+<br><br><br>
