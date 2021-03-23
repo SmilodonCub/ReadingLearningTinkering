@@ -1,0 +1,582 @@
+---
+title: '`R` Shiny'
+subtitle: 'building web application with Shiny in `R`'
+author: 'Bonnie Cooper'
+output:
+  rmdformats::downcute
+---
+
+```{r message=F}
+library( DiagrammeR )
+library( shiny )
+library( plotly )
+library( babynames )
+library( shinythemes )
+library( gapminder )
+library( dplyr )
+```
+
+
+Introduction to Shiny apps in `R`
+
+What is a web app?  
+
+* Updates based on user input/interaction
+* Made up of UI & server  
+
+How does a web app work?  
+A web app is a thingy that updates based on user input/interaction. Most web application consist of two parts. The client contains the user interface, that is, buttons and selectors and text boxes and other things that the user can interact with. The server (or backend) is where computation happens, including things like manipulating data and running models.  
+
+1. Client (User Interface)
+2. Server (Backend) that carries out computations based on the user interactions
+```{r, message=F, echo=F}
+DiagrammeR::grViz("digraph {
+
+graph [layout = dot, rankdir = LR]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = rectangle, style = filled, fillcolor = Linen]
+
+data1 [label = 'Client 1', shape = folder, fillcolor = Beige]
+data2 [label = 'Client 2', shape = folder, fillcolor = Beige]
+data3 [label = 'Client 2', shape = folder, fillcolor = Beige]
+process [label =  'teh Internetz']
+statistical [label = 'Server']
+
+# edge definitions with the node IDs
+{data1 data2 data3}  -> process -> statistical
+}")
+```
+
+
+`iris` shiny app
+```{r}
+
+#plot_kmean()
+
+ui <- fluidPage(
+  h1( 'K-Means Clustering App' ),
+  selectInput( 'x', 'Select x', names( iris ), 'Sepal.Length' ),
+  selectInput( 'y', 'Select y', names( iris ), 'Sepal.Width' ),
+  numericInput('nb_clusters', 'Select number of clusters', 3 ),
+  plotly::plotlyOutput( 'kmeans_plot' )
+)
+
+server <- function( input, output, session ){
+  plot_kmeans <- function( data, x, y, nb_clusters ){
+  k1 <- kmeans(x=data[, 1:4], centers=nb_clusters)
+  plot( data[ c(x,y) ], col = k1$cluster )}
+  output$kmeans_plot <- plotly::renderPlotly({
+    plot_kmeans(iris, input$x, input$y, input$nb_clusters)
+  })
+}
+
+shinyApp( ui = ui, server = server )
+```
+
+
+Shiny skeleton  
+
+* Load `shiny`
+* Create the UI with an HTML function
+  + `fluidPage()`
+* Define a custom function to create the server
+  + ex: input, output & session
+* Run the app
+  + `shinyApp()`
+  
+  Hello Shiny!
+```{r message = F}
+ui <- fluidPage(
+  "Hello Shiny!"
+)
+server <- function( input, output, session ){
+  
+}
+shinyApp( ui = ui, server = server )
+```
+  
+Ask a Question:
+```{r message = F}
+ui <- fluidPage(
+  textInput( 'name', 'Enter a name:'),
+  textOutput("q")
+)
+server <- function( input, output ){
+  output$q <- renderText( {
+    paste( "Do you prefer dogs or cats,",
+           input$name, "?")
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+
+```{r}
+data( babynames )
+ui <- fluidPage(
+  titlePanel( 'Baby Name Explorer' ),
+  sidebarLayout( sidebarPanel( 
+    textInput( 'name', 'Enter Name', 'David' ) ),
+  mainPanel( plotOutput( 'trend' ) ) )
+)
+server <- function( input, output, session ){
+  output$trend <- renderPlot( {
+    data_name <- subset(
+      babynames, name == input$name
+    )
+    ggplot( data_name ) +
+      geom_line(
+        aes( x = year, y = prop, color = sex )
+      )
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+
+### Example Inputs
+
+* slider - slide a pointer to a value on a scale
+* select list - a pull down menu allows the user to select between options on a list
+* numeric - can enter or increment integer values
+* date range - allows user to select a range of dates
+
+```{r}
+ui <- fluidPage(
+  titlePanel("What's in a Name?"),
+  # Add select input named "sex" to choose between "M" and "F"
+  selectInput('sex', 'Select Sex', choices = c("F", "M")),
+  # CODE BELOW: Add slider input named 'year' to select years  (1900 - 2010)
+  sliderInput( "year", "label", value = 1900, min = 1900, max = 2010 ),
+  # Add plot output to display top 10 most popular names
+  plotOutput('plot_top_10_names')
+)
+
+server <- function(input, output, session){
+  # Render plot of top 10 most popular names
+  output$plot_top_10_names <- renderPlot({
+    # Get top 10 names by sex and year
+    top_10_names <- babynames %>% 
+      filter(sex == input$sex) %>% 
+    # MODIFY CODE BELOW: Filter for the selected year
+      filter(year == input$year ) %>% 
+      top_n(10, prop)
+    # Plot top 10 names by sex and year
+      ggplot(top_10_names, aes(x = name, y = prop)) +
+        geom_col(fill = "#263e63")
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+
+```{r}
+ui <- fluidPage(
+  titlePanel("What's in a Name?"),
+  # CODE BELOW: Add select input named "sex" to choose between "M" and "F"
+  selectInput( "sex", "Male or Female?", choices = c( "M", "F" ) ),
+  # Add plot output to display top 10 most popular names
+  plotOutput('plot_top_10_names')
+)
+
+server <- function(input, output, session){
+  # Render plot of top 10 most popular names
+  output$plot_top_10_names <- renderPlot({
+    # Get top 10 names by sex and year
+    top_10_names <- babynames %>% 
+      # MODIFY CODE BELOW: Filter for the selected sex
+      filter(sex == input$sex ) %>% 
+      filter(year == 1900) %>% 
+      top_n(10, prop)
+    # Plot top 10 names by sex and year
+    ggplot(top_10_names, aes(x = name, y = prop)) +
+      geom_col(fill = "#263e63")
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+
+### Render & Output Functions
+
+Render functions build outputs in the server based on inputs  
+Types of render functions:  
+
+* renderText()
+* renderTable()
+* renderImage()
+* renderPlot()
+* check out the shiny documentation for more
+
+Output functions are in the ui to visualize the result of the render functions in the server
+Types of output function:  
+
+* textOutput()
+* tableOutput()
+* imageOutput()
+* plotOutput()
+* dataTableOutput()
+
+```{r}
+ui <- fluidPage(
+  DT::DTOutput( "babynames_table" )
+)
+
+server <- function( input, output ){
+  output$babynames_table <- DT::renderDT({
+    babynames %>%
+      dplyr::sample_frac(.1)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
+```{r}
+ui <- fluidPage(
+  titlePanel("What's in a Name?"),
+  # Add select input named "sex" to choose between "M" and "F"
+  selectInput('sex', 'Select Sex', choices = c("F", "M")),
+  # Add slider input named "year" to select year between 1900 and 2010
+  sliderInput('year', 'Select Year', min = 1900, max = 2010, value = 1900),
+  # CODE BELOW: Add table output named "table_top_10_names"
+  DT::DTOutput( "table_top_10_names" )
+  
+)
+server <- function(input, output, session){
+  # Function to create a data frame of top 10 names by sex and year 
+  top_10_names <- function(){
+    top_10_names <- babynames %>% 
+      filter(sex == input$sex) %>% 
+      filter(year == input$year) %>% 
+      top_n(10, prop)
+  }
+  # CODE BELOW: Render a table output named "table_top_10_names"
+  output$table_top_10_names <- DT::renderDT({
+    top_10_names() })
+}
+shinyApp(ui = ui, server = server)
+```
+
+```{r}
+
+name <- c( 'Kizzy', 'Deneen', 'Royalty', 'Mareli', 'Moesha', 'Marely', 'Kanye', 
+           'Tennille', 'Aitana', 'Kadijah','Shaquille', 'Catina', 'Allisson', 
+           'Emberly', 'Nakia' , 'Jaslene', 'Kyrie', 'Akeelah', 'Zayn', 'Talan' )
+sex <- c( 'F', 'F', 'F', 'F', 'F', 'F', 'M', 'F', 'F', 'F', 'M', 'F', 'F', 
+          'F', 'M', 'F', 'M', 'F', 'M', 'M' )
+total <- c(2325, 3603, 1806, 1024, 1067, 2577, 1319, 2172, 1625, 1418, 5439, 
+           4178, 2377, 1471, 1991, 2870, 5858, 1331, 3347, 3640 )
+max <- c( 1116, 1604, 747, 411, 426, 1004, 508, 769, 564, 486, 1784, 1370, 767, 
+          467, 612, 872, 1774, 403, 988, 1059 )
+nb_years <- c( 30, 52, 14, 21, 14, 28, 16, 32, 23, 36, 29, 47, 21, 34, 40, 17, 31, 17, 25, 28 )
+trendiness <- c( 0.48, 0.445, 0.414, 0.401, 0.399, 0.390, 0.385, 0.354, 0.347, 
+                 0.343, 0.328, 0.328, 0.323, 0.317, 0.307, 0.304, 0.303, 0.303, 
+                 0.295, 0.291 )
+top_trendy_names <- data.frame( 'name' = name, 'sex' = sex, 
+                                'total' = total, 'max' = max,
+                                'nb_years' = nb_years, 'trendiness' = trendiness )  
+str( top_trendy_names )
+```
+
+top_trendy_names
+ A tibble: 20 x 6
+   name      sex   total   max nb_years trendiness
+   <chr>     <chr> <int> <int>    <int>      <dbl>
+ 1 Kizzy     F      2325  1116       30      0.48 
+ 2 Deneen    F      3603  1604       52      0.445
+ 3 Royalty   F      1806   747       14      0.414
+ 4 Mareli    F      1024   411       21      0.401
+ 5 Moesha    F      1067   426       14      0.399
+ 6 Marely    F      2577  1004       28      0.390
+ 7 Kanye     M      1319   508       16      0.385
+ 8 Tennille  F      2172   769       32      0.354
+ 9 Aitana    F      1625   564       23      0.347
+10 Kadijah   F      1418   486       36      0.343
+11 Shaquille M      5439  1784       29      0.328
+12 Catina    F      4178  1370       47      0.328
+13 Allisson  F      2377   767       21      0.323
+14 Emberly   F      1471   467       34      0.317
+15 Nakia     M      1991   612       40      0.307
+16 Jaslene   F      2870   872       17      0.304
+17 Kyrie     M      5858  1774       31      0.303
+18 Akeelah   F      1331   403       17      0.303
+19 Zayn      M      3347   988       25      0.295
+20 Talan     M      3640  1059       28      0.291
+
+```{r}
+ui <- fluidPage(
+  selectInput('name', 'Select Name', top_trendy_names$name),
+  # CODE BELOW: Add a plotly output named 'plot_trendy_names'
+  plotly::plotlyOutput( 'plot_trendy_names' )
+)
+server <- function(input, output, session){
+  # Function to plot trends in a name
+  plot_trends <- function(){
+     babynames %>% 
+      filter(name == input$name) %>% 
+      ggplot(aes(x = year, y = n)) +
+      geom_col()
+  }
+  # CODE BELOW: Render a plotly output named 'plot_trendy_names'
+  output$plot_trendy_names <- plotly::renderPlotly( {plot_trends()} )
+}
+shinyApp(ui = ui, server = server)
+```
+ 
+### Layouts and Themes
+well chosen layout are good for aesthetics!  
+
+Default:
+```{r}
+ui <- fluidPage(
+  titlePanel( "histogram" ),
+  sliderInput( "nb_bins", "# Bins", 5, 10, 5 ),
+  plotOutput( "hist" )
+)
+server <- function( input, output, session ){
+  output$hist <- renderPlot( {
+    hist( faithful$waiting,
+          breaks = input$nb_bins,
+          col = 'pink' )
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+
+Sidebar layout: inputs to the left, output in the main panel to the right
+```{r}
+ui <- fluidPage(
+  titlePanel( "histogram" ),
+  sidebarLayout( sidebarPanel( sliderInput( "nb_bins", "# Bins", 5, 10, 5 ) ),
+  mainPanel( plotOutput( "hist" ) ) )
+)
+server <- function( input, output, session ){
+  output$hist <- renderPlot( {
+    hist( faithful$waiting,
+          breaks = input$nb_bins,
+          col = 'pink' )
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+Tab Layout  
+put different plots in different tabs to give each it's own space
+```{r}
+ui <- fluidPage(
+  titlePanel( 'Histogram' ),
+  sidebarLayout(
+    sidebarPanel( sliderInput( 'nb_bins', '# Bins', 5, 10, 5 ) ),
+    mainPanel( 
+      tabsetPanel(
+        tabPanel( 'Waiting', plotOutput( 'hist_waiting' ) ),
+        tabPanel( 'Eruptions', plotOutput( 'hist_eruptions' ) )
+      ))
+  )
+)
+server <- function( input, output, session ){
+  output$hist_waiting <- renderPlot( {
+    hist(faithful$waiting,
+         breaks = input$nb_bins,
+         col = 'pink' )
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+Theme selector  
+Shiny makes it easy to customize the theme of an app. The UI functions in Shiny make use of Twitter Bootstrap, a popular framework for building web applications. Bootswatch extends Bootstrap by making it really easy to skin an application with minimal code changes.
+```{r}
+ui <- fluidPage(
+  titlePanel( "histogram" ),
+  #shinythemes::themeSelector(),
+  theme = shinythemes::shinytheme( 'superhero' ),
+  sidebarLayout( sidebarPanel( sliderInput( "nb_bins", "# Bins", 5, 10, 5 ) ),
+  mainPanel( plotOutput( "hist" ) ) )
+)
+server <- function( input, output, session ){
+  output$hist <- renderPlot( {
+    hist( faithful$waiting,
+          breaks = input$nb_bins,
+          col = 'pink' )
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+
+```{r}
+ui <- fluidPage(
+  # MODIFY CODE BELOW: Wrap in a sidebarLayout
+    # MODIFY CODE BELOW: Wrap in a sidebarPanel
+    sidebarLayout( sidebarPanel( selectInput('name', 'Select Name', top_trendy_names$name) ),
+    # MODIFY CODE BELOW: Wrap in a mainPanel
+    mainPanel( plotly::plotlyOutput('plot_trendy_names') ,
+    DT::DTOutput('table_trendy_names') ) )
+)
+# DO NOT MODIFY
+server <- function(input, output, session){
+  # Function to plot trends in a name
+  plot_trends <- function(){
+     babynames %>% 
+      filter(name == input$name) %>% 
+      ggplot(aes(x = year, y = n)) +
+      geom_col()
+  }
+  output$plot_trendy_names <- plotly::renderPlotly({
+    plot_trends()
+  })
+  
+  output$table_trendy_names <- DT::renderDT({
+    babynames %>% 
+      filter(name == input$name)
+  })
+}
+shinyApp(ui = ui, server = server)
+```
+Tab Example:
+```{r}
+ui <- fluidPage(
+  sidebarLayout(
+    sidebarPanel(
+      selectInput('name', 'Select Name', top_trendy_names$name)
+    ),
+    mainPanel(
+      # MODIFY CODE BLOCK BELOW: Wrap in a tabsetPanel
+      tabsetPanel(
+        # MODIFY CODE BELOW: Wrap in a tabPanel providing an appropriate label
+        tabPanel( 'Plot', plotly::plotlyOutput('plot_trendy_names') ),
+        # MODIFY CODE BELOW: Wrap in a tabPanel providing an appropriate label
+        tabPanel( 'Table', DT::DTOutput('table_trendy_names') ) )
+    )
+  )
+)
+server <- function(input, output, session){
+  # Function to plot trends in a name
+  plot_trends <- function(){
+     babynames %>% 
+      filter(name == input$name) %>% 
+      ggplot(aes(x = year, y = n)) +
+      geom_col()
+  }
+  output$plot_trendy_names <- plotly::renderPlotly({
+    plot_trends()
+  })
+  
+  output$table_trendy_names <- DT::renderDT({
+    babynames %>% 
+      filter(name == input$name)
+  })
+}
+shinyApp(ui = ui, server = server)
+```
+
+
+### Building apps
+Build an app using the gapminder dataset.  
+Explore Life Expectancy vs. GDP per Capita  
+
+Building Shiny apps: 4 steps  
+
+1. Add inputs (UI)
+2. Add outputs (server)
+3. Update layout (UI)
+4. Update outputs (Server)
+
+```{r}
+ui <- fluidPage(
+  titlePanel( 'Life Expectation vs. GDP Per Capita' ), #step1
+  selectInput( 'continent', 'Select Continent', unique( gapminder$continent )), #step1
+  sliderInput( 'year', 'Select Year', 1952, 2007, 1992, step = 5 ), #step1
+  plotOutput( 'plot' ), #step2
+  DT::DTOutput('table') #step2
+)
+server <- function( input, output, session ){
+  output$plot <- renderPlot( { #step2 - adding placeholders
+    ggplot()
+  })
+  output$table <- DT::renderDT({ #step2 - adding placeholders
+    gapminder
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+```{r}
+ui <- fluidPage(
+  titlePanel( 'Life Expectation vs. GDP Per Capita' ),  #step3 - format the UI layout
+  sidebarLayout( 
+    sidebarPanel( 
+      selectInput( 'continent', 'Select Continent', unique( gapminder$continent )), 
+      sliderInput( 'year', 'Select Year', 1952, 2007, 1992, step = 5 ) 
+      ),
+    mainPanel( 
+      tabsetPanel( 
+        tabPanel( 'Plot', plotOutput( 'plot' ) ), 
+        tabPanel( 'Table', DT::DTOutput('table') ) 
+        ) 
+      ) 
+    ) 
+)
+server <- function( input, output, session ){   #step4 - update the outputs
+  output$plot <- renderPlot( { #step2 - adding placeholders
+    data <- gapminder %>%
+      filter( year == input$year ) %>%
+      filter( continent == input$continent )
+    #print( data )
+    ggplot( data, aes( x = gdpPercap, y = lifeExp )) +
+      geom_point() +
+      ylim( c( 50, 90 ) )
+  })
+  output$table <- DT::renderDT({ #step2 - adding placeholders
+    gapminder %>%
+      filter( year == input$year ) %>%
+      filter( continent == input$continent )
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+
+```{r}
+ui <- fluidPage(
+  selectInput('greeting', 'Select greeting', choices = c("Hello", "Bonjour")),
+  textInput( 'name', 'Enter your name', 'Kaelen' ),
+  textOutput("q")
+)
+
+server <- function( input, output ){
+  output$q <- renderText( {
+    paste( input$greeting, ',', input$name )
+  })
+}
+shinyApp( ui = ui, server = server )
+```
+```{r}
+ui <- fluidPage(
+  titlePanel( "Most Popular Names" ),
+  sidebarLayout( sidebarPanel( selectInput('sex', 'Select sex', choices = c("M", "F")),
+  sliderInput( "year", "Select year", 1880, 2017, 1 ) ),
+  mainPanel( 
+    tabsetPanel( 
+      tabPanel( 'Plot', plotOutput( "plot" ) ), 
+      tabPanel( 'Table', DT::DTOutput('table') ) ) ) )
+)
+
+server <- function(input, output, session) {
+  output$plot <- renderPlot( {
+      top_10_names <- babynames %>% 
+      filter(sex == input$sex) %>% 
+      filter(year == input$year ) %>% 
+      top_n(10, prop)
+      ggplot(top_10_names, aes(x = name, y = prop)) +
+      geom_col()
+  })
+  output$table <- DT::renderDT({ #step2 - adding placeholders
+    babynames %>% 
+    filter(sex == input$sex) %>% 
+    filter(year == input$year ) %>% 
+    top_n(10, prop)
+  })
+}
+shinyApp(ui = ui, server = server)
+```
+
+
+
+<br><br><br>
