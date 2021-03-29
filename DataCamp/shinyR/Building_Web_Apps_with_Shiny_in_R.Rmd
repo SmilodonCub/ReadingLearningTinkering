@@ -6,6 +6,9 @@ output:
   rmdformats::downcute
 ---
 
+<a href="https://github.com/SmilodonCub/ReadingLearningTinkering/blob/master/DataCamp/shinyR/Building_Web_Apps_with_Shiny_in_R.Rmd" class="github-corner" aria-label="View source on GitHub"><svg width="80" height="80" viewBox="0 0 250 250" style="fill:#70B7FD; color:#fff; position: absolute; top: 0; border: 0; right: 0;" aria-hidden="true"><path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path><path d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2" fill="currentColor" style="transform-origin: 130px 106px;" class="octo-arm"></path><path d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z" fill="currentColor" class="octo-body"></path></svg></a><style>.github-corner:hover .octo-arm{animation:octocat-wave 560ms ease-in-out}@keyframes octocat-wave{0%,100%{transform:rotate(0)}20%,60%{transform:rotate(-25deg)}40%,80%{transform:rotate(10deg)}}@media (max-width:500px){.github-corner:hover .octo-arm{animation:none}.github-corner .octo-arm{animation:octocat-wave 560ms ease-in-out}}</style>
+
+
 ```{r message=F}
 library( DiagrammeR )
 library( shiny )
@@ -50,7 +53,7 @@ statistical [label = 'Server']
 
 
 `iris` shiny app
-```{r}
+```{r }
 
 #plot_kmean()
 
@@ -97,7 +100,7 @@ shinyApp( ui = ui, server = server )
 ```
   
 Ask a Question:
-```{r message = F}
+```{r}
 ui <- fluidPage(
   textInput( 'name', 'Enter a name:'),
   textOutput("q")
@@ -231,7 +234,7 @@ server <- function( input, output ){
 shinyApp(ui = ui, server = server)
 ```
 
-```{r}
+```{r }
 ui <- fluidPage(
   titlePanel("What's in a Name?"),
   # Add select input named "sex" to choose between "M" and "F"
@@ -547,7 +550,7 @@ server <- function( input, output ){
 }
 shinyApp( ui = ui, server = server )
 ```
-```{r}
+```{r }
 ui <- fluidPage(
   titlePanel( "Most Popular Names" ),
   sidebarLayout( sidebarPanel( selectInput('sex', 'Select sex', choices = c("M", "F")),
@@ -576,6 +579,395 @@ server <- function(input, output, session) {
 }
 shinyApp(ui = ui, server = server)
 ```
+
+## Reactive Programming 
+
+### Reactivity 101
+Reactive Sources & Reactive Endpoints  
+
+**Reactive Source** - User input that comes through a browser interface, typically  
+a reactive source can be connected to multiple endpoints and vice versa  
+
+**Reactive Endpoint** - output that typically appears in the browser window, such as a plot or a table of variables  
+endpoints are notified when the underlying value of sources changes and updates in response to this signal  
+
+**Reactive Conductor** - An intermediate that depends on reactive sources, and/or updates reactive endpoints  
+
+**Reactive Expression** - reactive expressions are lazy & cached
+```{r}
+
+ui <- fluidPage(
+  titlePanel( 'Greeting' ), 
+  textInput( 'name', 'Enter Name' ), #REACTIVE SOURCE
+  textOutput( 'greeting' ) #REACTIVE ENDPOINT
+)
+
+server <- function( input, output, session ){
+  output$greeting <- renderText( {
+    paste( 'Hello', input$name )
+  })
+}
+
+shinyApp( ui = ui, server = server )
+```
+
+a reactive conductor
+```{r}
+#REACTIVE CONDUCTOR
+server <- function( input, output, session ){
+    output$plot_trendy_names <- plotly::renderPlotly({
+      babynames %>%
+        filter( name == input$name ) %>% #the reactive intermediate code gets repeated and reevaluated
+        ggplot( val_bnames, aes( x = year, y = n )) +
+        geom_col
+    })
+    output$table_trendy_names <- DT::renderDT({
+      babynames %>%
+        filter( name == input$name )
+    })
+  }
+```
+
+a reactive
+```{r}
+#REACTIVE EXPRESSION 
+server <- function( input, output, session ){
+  rval_babynames <- reactive({
+    babynames %>%
+      filter( name == input$name )
+  })
+  output$plot_trendy_names <- plotly::renderPlotly({
+    rval_babynames() %>%
+      ggplot( val_bnames, aes( x = year, y = n)) +
+      geom_col()
+  })
+  output$table_trendy_names <- DT::renderDT({
+    rval_babynames()
+  })
+}
+```
+
+A reactive expression behaves just like a function, but with two key differences:  
+
+1. It is **lazy**, meaning that it is evaluated only when a reactive enpoint calls it
+2. It is **cached**, meaning that it is evaluates only when the value of one of its underlying reactive sources changes
+
+
+```{r}
+ui <- fluidPage(
+  titlePanel('BMI Calculator'),
+  theme = shinythemes::shinytheme('cosmo'),
+  sidebarLayout(
+    sidebarPanel(
+      numericInput('height', 'Enter your height in meters', 1.5, 1, 2),
+      numericInput('weight', 'Enter your weight in Kilograms', 60, 45, 120)
+    ),
+    mainPanel(
+      textOutput("bmi"),
+      textOutput("bmi_range")
+    )
+  )
+)
+server <- function(input, output, session) {
+  rval_bmi <- reactive({
+    input$weight/(input$height^2)
+  })
+  output$bmi <- renderText({
+    bmi <- rval_bmi()
+    paste("Your BMI is", round(bmi, 1))
+  })
+  output$bmi_range <- renderText({
+    bmi <- rval_bmi()
+    health_status <- cut(bmi, 
+      breaks = c(0, 18.5, 24.9, 29.9, 40),
+      labels = c('underweight', 'healthy', 'overweight', 'obese')
+    )
+    paste("You are", health_status)
+  })
+}
+shinyApp(ui, server)
+```
+
+### Observer vs Reactives
+
+* **`reactive()`** is for calculating values, without side effects  
+  + reactive expressions return values, but observers do not.
+* **`observe()`** is for performing actions, with side effects
+  + observers eagerly response to changes in their dependencies, while reactive expressions are lazy
+* **side effects** observers are primarily useful for their side effects, whereas, reactive expressions must NOT have side effects
+
+![](reactiveFlowShiny.png)
+
+```{r}
+ui <- fluidPage(
+  textInput( 'name', 'Enter Your Name' )
+)
+server <- function( input, output, session ){
+  observe({
+    showNotification(
+      paste( 'You entered the name', input$name )
+    )
+  })
+}
+shinyApp(ui, server)
+```
+
+```{r}
+ui <- fluidPage(
+  titlePanel('BMI Calculator'),
+  theme = shinythemes::shinytheme('cosmo'),
+  sidebarLayout(
+    sidebarPanel(
+      numericInput('height', 'Enter your height in meters', 1.5, 1, 2),
+      numericInput('weight', 'Enter your weight in Kilograms', 60, 45, 120)
+    ),
+    mainPanel(
+      textOutput("bmi"),
+      textOutput("bmi_range")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  rval_bmi <- reactive({
+    input$weight/(input$height^2)
+  })
+  # CODE BELOW: Add a reactive expression rval_bmi_status to 
+  # return health status as underweight etc. based on inputs
+  rval_bmi_status <- reactive({
+    cut(rval_bmi(), 
+    breaks = c(0, 18.5, 24.9, 29.9, 40),
+    labels = c('underweight', 'healthy', 'overweight', 'obese')
+    )
+  })
+  
+  
+  
+  output$bmi <- renderText({
+    bmi <- rval_bmi()
+    paste("Your BMI is", round(bmi, 1))
+  })
+  output$bmi_status <- renderText({
+    # MODIFY CODE BELOW: Replace right-hand-side with 
+    # reactive expression rval_bmi_status
+    bmi_status <- rval_bmi_status()
+    paste("You are", bmi_status)
+  })
+}
+ui <- fluidPage(
+  titlePanel('BMI Calculator'),
+  sidebarLayout(
+    sidebarPanel(
+      numericInput('height', 'Enter your height in meters', 1.5, 1, 2),
+      numericInput('weight', 'Enter your weight in Kilograms', 60, 45, 120)
+    ),
+    mainPanel(
+      textOutput("bmi"),
+      textOutput("bmi_status")
+    )
+  )
+)
+
+shinyApp(ui = ui, server = server)
+```
+
+### Stop - delay - trigger
+
+The **Isolate** function allows a reactive expression to read a reactive value without triggering re-execution when it's value changes. Wrapping a reactive value inside isolate makes it read-only, and does NOT trigger re-execution when it's value changes
+
+```{r}
+server <- function( input, output, session ){
+  output$greeting <- renderText( {
+    paste( isolate(
+      input$greeting_type
+    ),
+    input$name, sep = ',' )
+  })
+}
+```
+
+There might be a need for more explicit control over the update. Ex: only execute with the press of a button  
+You can delay the execution of a reactive expression by placing it inside `eventReactive()`, and specifying an event in response to which it should execute the expression.
+```{r}
+server <- function( input, output, session ){
+  rv_greeting <- eventReactive( input$show_greeting, {
+    paste( 'Hello', input$name )
+  })
+  output$greeting <- renderText( {
+    rv_greeting()
+  })
+}
+```
+
+Triggering actions. Unlike `eventReactive()`, `observeEvent()` is used only for it's side effects and does not return any value
+```{r}
+server <- function( input, output, session ){
+  observeEvent( input$show_greeting, {
+    showModal( modalDialog( paste( "Hello", input$name )))
+  })
+}
+```
+
+
+
+```{r}
+
+server <- function(input, output, session) {
+  rval_bmi <- reactive({
+    input$weight/(input$height^2)
+  })
+  output$bmi <- renderText({
+    bmi <- rval_bmi()
+    # MODIFY CODE BELOW: 
+    # Use isolate to stop output from updating when name changes.
+    paste("Hi", isolate({input$name}), ". Your BMI is", round(bmi, 1))
+  })
+}
+ui <- fluidPage(
+  titlePanel('BMI Calculator'),
+  sidebarLayout(
+    sidebarPanel(
+      textInput('name', 'Enter your name'),
+      numericInput('height', 'Enter your height (in m)', 1.5, 1, 2, step = 0.1),
+      numericInput('weight', 'Enter your weight (in Kg)', 60, 45, 120)
+    ),
+    mainPanel(
+      textOutput("bmi")
+    )
+  )
+)
+
+shinyApp(ui = ui, server = server)
+```
+
+```{r}
+server <- function(input, output, session) {
+#   rval_bmi <- eventReactive(
+#     input$show_bmi, {
+#       bmi <- input$weight/(input$height^2)
+#       paste("Hi", input$name, ". Your BMI is", round(bmi, 1))
+#   })
+#   output$bmi <- renderText({
+#     rval_bmi()
+#   })
+# }
+ rval_bmi <- eventReactive(input$show_bmi, {
+    input$weight/(input$height^2)
+  })
+  output$bmi <- renderText({
+    bmi <- rval_bmi()
+    paste("Hi", input$name, ". Your BMI is", round(bmi, 1))
+  })
+}
+ui <- fluidPage(
+  titlePanel('BMI Calculator'),
+  sidebarLayout(
+    sidebarPanel(
+      textInput('name', 'Enter your name'),
+      numericInput('height', 'Enter height (in m)', 1.5, 1, 2, step = 0.1),
+      numericInput('weight', 'Enter weight (in Kg)', 60, 45, 120),
+      actionButton("show_bmi", "Show BMI")
+    ),
+    mainPanel(
+      textOutput("bmi")
+    )
+  )
+)
+
+
+shinyApp(ui = ui, server = server)
+```
+
+```{r}
+bmi_help_text <- "Body Mass Index is a simple calculation using a person's height and weight. The formula is BMI = kg/m2 where kg is a person's weight in kilograms and m2 is their height in metres squared. A BMI of 25.0 or more is overweight, while the healthy range is 18.5 to 24.9."
+
+server <- function(input, output, session) {
+  # MODIFY CODE BELOW: Wrap in observeEvent() so the help text 
+  # is displayed when a user clicks on the Help button.
+  observeEvent( input$show_help, {
+     # Display a modal dialog with bmi_help_text
+     # MODIFY CODE BELOW: Uncomment code
+     showModal(modalDialog(bmi_help_text))
+     })
+  
+  rv_bmi <- eventReactive(input$show_bmi, {
+    input$weight/(input$height^2)
+  })
+  output$bmi <- renderText({
+    bmi <- rv_bmi()
+    paste("Hi", input$name, ". Your BMI is", round(bmi, 1))
+  })
+}
+
+ui <- fluidPage(
+  titlePanel('BMI Calculator'),
+  sidebarLayout(
+    sidebarPanel(
+      textInput('name', 'Enter your name'),
+      numericInput('height', 'Enter your height in meters', 1.5, 1, 2),
+      numericInput('weight', 'Enter your weight in Kilograms', 60, 45, 120),
+      actionButton("show_bmi", "Show BMI"),
+      # CODE BELOW: Add an action button named "show_help"
+      actionButton("show_help", "Help")
+      
+    ),
+    mainPanel(
+      textOutput("bmi")
+    )
+  )
+)
+
+shinyApp(ui = ui, server = server)
+```
+
+### Applying Reactivity Concepts
+
+Reactives and Observers  
+
+* Reactive sources are accessible through any input$x
+* Reactive condictors are good for slow or expensive calculations, and are placed between sources and endpoints
+* Reactive endpoints are accessible through any output$y, and are observers, primarily used for their side effects, and not directly to calculate things
+
+Stop, Delay, Trigger  
+
+* Stop with `isolate()`
+* Delay with `eventReactive()`
+* Trigger with `observeEvent()`
+
+Convert Height from inches to centimeters
+```{r}
+server <- function(input, output, session) {
+  # MODIFY CODE BELOW: Delay the height calculation until
+  # the show button is pressed
+  rval_height_cm <- eventReactive( input$show_height_cm, {
+    input$height * 2.54
+  })
+  
+  output$height_cm <- renderText({
+    height_cm <- rval_height_cm()
+    	paste("Your height in centimeters is", height_cm, "cm")
+    })
+}
+
+ui <- fluidPage(
+  titlePanel("Inches to Centimeters Conversion"),
+  sidebarLayout(
+    sidebarPanel(
+      numericInput("height", "Height (in)", 60),
+      actionButton("show_height_cm", "Show height in cm")
+    ),
+    mainPanel(
+      textOutput("height_cm")
+    )
+  )
+)
+
+shinyApp(ui = ui, server = server)
+```
+
+
+
+
 
 
 
