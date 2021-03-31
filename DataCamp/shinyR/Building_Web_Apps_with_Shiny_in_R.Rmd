@@ -17,10 +17,12 @@ library( babynames )
 library( shinythemes )
 library( gapminder )
 library( dplyr )
+library( shinydashboard )
+library( shinyWidgets )
 ```
 
 
-Introduction to Shiny apps in `R`
+## Introduction to Shiny apps in `R`
 
 What is a web app?  
 
@@ -135,6 +137,7 @@ server <- function( input, output, session ){
 }
 shinyApp( ui = ui, server = server )
 ```
+## Inputs, Outputs & Layouts
 
 ### Example Inputs
 
@@ -965,9 +968,152 @@ ui <- fluidPage(
 shinyApp(ui = ui, server = server)
 ```
 
+## Build Shiny Apps
+
+### Build an Aliens Sightings Dashboard
+
+```{r}
+ui <- fluidPage(
+  selectInput( "shape",
+               "Choose a shape:",
+               choices = unique( usa_ufo_sightings$shape )
+               )
+)
+```
+
+```{r}
+usa_ufo_sightings <- read.csv( 'usa_ufo_sightings.csv' )
+glimpse( usa_ufo_sightings )
+```
 
 
 
+```{r}
+ui <- fluidPage(
+  titlePanel("UFO Sightings"),
+  sidebarPanel(
+    selectInput("state", "Choose a U.S. state:", choices = unique(usa_ufo_sightings$state)),
+    dateRangeInput("dates", "Choose a date range:",
+      start = "1910-01-02",
+      end = "2014-05-08"
+    )
+  ),
+  mainPanel( 
+    tabsetPanel(
+      tabPanel( 'Shapes', plotOutput("shapes") ),
+      tabPanel( 'Duration', tableOutput("duration_table") )
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$shapes <- renderPlot({
+    usa_ufo_sightings %>%
+      filter(
+        state == input$state,
+        date_sighted >= input$dates[1],
+        date_sighted <= input$dates[2]
+      ) %>%
+      ggplot(aes(shape)) +
+      geom_bar() +
+      labs(
+        x = "Shape",
+        y = "# Sighted"
+      )
+  })
+
+  output$duration_table <- renderTable({
+    usa_ufo_sightings %>%
+      filter(
+        state == input$state,
+        date_sighted >= input$dates[1],
+        date_sighted <= input$dates[2]
+      ) %>%
+      group_by(shape) %>%
+      summarize(
+        nb_sighted = n(),
+        avg_duration_min = mean(duration_sec) / 60,
+        median_duration_min = median(duration_sec) / 60,
+        min_duration_min = min(duration_sec) / 60,
+        max_duration_min = max(duration_sec) / 60
+      )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+```{r}
+mental_health_survey <- read.csv( 'mental_health_survey_edited.csv' )
+glimpse( mental_health_survey )
+```
+
+
+Custom Error Messages
+```{r}
+
+server <- function( input, output, session ){
+  output$age <- renderTable({
+    validate(
+      need( input$age != "", "Be sure to select an age." )
+    )
+    mental_health_survey %>%
+      summarise( avg_age = mean( Age ))
+  })
+}
+
+```
+
+```{r}
+server <- function(input, output, session) {
+  output$age <- renderPlot({
+    # MODIFY CODE BELOW: Add validation that user selected a 3rd input
+    validate(
+      need( input$mental_vs_physical != "", "Be sure to select an answer for the second question." )
+    )    
+  
+
+    mental_health_survey %>%
+      filter(
+        work_interfere == input$work_interfere,
+        mental_health_consequence %in% input$mental_health_consequence,
+        mental_vs_physical %in% input$mental_vs_physical
+      ) %>%
+      ggplot(aes(Age)) +
+      geom_histogram()
+  })
+}
+
+ui <- fluidPage(
+  titlePanel("2014 Mental Health in Tech Survey"),
+  sidebarPanel(
+    sliderTextInput(
+      inputId = "work_interfere",
+      label = "If you have a mental health condition, do you feel that it interferes with your work?", 
+      grid = TRUE,
+      force_edges = TRUE,
+      choices = c("Never", "Rarely", "Sometimes", "Often")
+    ),
+    checkboxGroupInput(
+      inputId = "mental_health_consequence",
+      label = "Do you think that discussing a mental health issue with your employer would have negative consequences?", 
+      choices = c("Maybe", "Yes", "No"),
+      selected = "Maybe"
+    ),
+    pickerInput(
+      inputId = "mental_vs_physical",
+      label = "Do you feel that your employer takes mental health as seriously as physical health?", 
+      choices = c("Don't Know", "No", "Yes"),
+      multiple = TRUE
+    )    
+  ),
+  mainPanel(
+    plotOutput("age")  
+  )
+)
+
+shinyApp(ui, server)
+```
 
 
 
