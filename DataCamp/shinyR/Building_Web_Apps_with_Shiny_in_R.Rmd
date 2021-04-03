@@ -19,6 +19,10 @@ library( gapminder )
 library( dplyr )
 library( shinydashboard )
 library( shinyWidgets )
+library( d3wordcloud )
+library( tidytext )
+library( leaflet )
+library( lubridate )
 ```
 
 
@@ -1114,6 +1118,221 @@ ui <- fluidPage(
 
 shinyApp(ui, server)
 ```
+
+### Recipes App
+```{r}
+# /home/bonzilla/Documents/ReadingLearningTinkering/DataCamp/shinyR
+recipe_df <- readRDS( 'recipes.rds', refhook = NULL ) %>%
+  unnest( ingredients )
+
+glimpse( recipe_df )
+head( recipe_df )
+
+```
+
+```{r}
+recipes_enriched <- recipe_df %>%
+  count( cuisine, ingredients, name = 'nb_recipes' ) %>%
+  bind_tf_idf( ingredients, cuisine, nb_recipes )
+head( recipes_enriched )
+
+
+ui <- fluidPage(
+  titlePanel( 'Explore Cuisines' ),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput( 'cuisine', 'Select Cuisine', unique( recipe_df$cuisine ) ),
+      sliderInput( 'nb_ingredients', 'Select No. of Ingredients', 5, 100, 20 )
+      
+    ),
+    mainPanel(
+      tabsetPanel(
+        tabPanel( 'Word Cloud', d3wordcloudOutput( 'wc_ingredients' ) ),
+        tabPanel( 'Plot', plotly::plotlyOutput( 'plot_top_ingredients' ) ),
+        tabPanel( 'Table', DT::DTOutput( 'dt_top_ingredients' ) )
+      )
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  output$dt_top_ingredients <- DT::renderDT({
+    recipe_df %>%
+      filter( cuisine == input$cuisine ) %>%
+      count( ingredients, name = 'nb_recipes' ) %>%
+      arrange( desc( nb_recipes ) ) %>%
+      head( input$nb_ingredients )
+  })
+  
+  rval_top_ingredients <- reactive({
+    recipes_enriched %>%
+      filter( cuisine == input$cuisine ) %>%
+      arrange( desc( tf_idf ) ) %>%
+      head( input$nb_ingredients ) %>%
+      mutate( ingredients = forcats::fct_reorder( ingredients, tf_idf ) )
+  })
+  
+  output$plot_top_ingredients <- plotly::renderPlotly({
+    rval_top_ingredients() %>%
+      ggplot( aes( x = ingredients, y = tf_idf ) ) +
+      geom_col() +
+      coord_flip()
+  })
+  
+  output$wc_ingredients <- d3wordcloud::renderD3wordcloud({
+    d <- rval_top_ingredients()
+    d3wordcloud( d$ingredients, d$nb_recipes, tooltip = T )
+  })
+  
+}
+
+shinyApp(ui, server)
+```
+Correct answer:
+```{r}
+ui <- fluidPage(
+  titlePanel('Explore Cuisines'),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput('cuisine', 'Select Cuisine', unique(recipes$cuisine)),
+      sliderInput('nb_ingredients', 'Select No. of Ingredients', 5, 100, 20),
+    ),
+    mainPanel(
+      tabsetPanel(
+        # CODE BELOW: Add `d3wordcloudOutput` named `wc_ingredients` in a `tabPanel`
+        tabPanel( 'Word Cloud', d3wordcloudOutput( 'wc_ingredients' ) ),
+        tabPanel('Plot', plotly::plotlyOutput('plot_top_ingredients')),
+        tabPanel('Table', DT::DTOutput('dt_top_ingredients'))
+      )
+    )
+  )
+)
+server <- function(input, output, session){
+  # CODE BELOW: Render an interactive wordcloud of top ingredients and 
+  # the number of recipes they get used in, using `d3wordcloud::renderD3wordcloud`,
+  # and assign it to an output named `wc_ingredients`.
+  output$wc_ingredients <- d3wordcloud::renderD3wordcloud({
+    d <- rval_top_ingredients()
+    d3wordcloud( d$ingredient, d$nb_recipes, tooltip = T )
+  })  
+  rval_top_ingredients <- reactive({
+    recipes_enriched %>% 
+      filter(cuisine == input$cuisine) %>% 
+      arrange(desc(tf_idf)) %>% 
+      head(input$nb_ingredients) %>% 
+      mutate(ingredient = forcats::fct_reorder(ingredient, tf_idf))
+  })
+  output$plot_top_ingredients <- plotly::renderPlotly({
+    rval_top_ingredients() %>%
+      ggplot(aes(x = ingredient, y = tf_idf)) +
+      geom_col() +
+      coord_flip()
+  })
+  output$dt_top_ingredients <- DT::renderDT({
+    recipes %>% 
+      filter(cuisine == input$cuisine) %>% 
+      count(ingredient, name = 'nb_recipes') %>% 
+      arrange(desc(nb_recipes)) %>% 
+      head(input$nb_ingredients)
+  })
+}
+shinyApp(ui = ui, server= server)
+```
+
+
+### Shootings leaflet app
+```{r}
+mass_shootings <- read.csv( 'mass-shootings.csv' )
+mass_shootings <- mass_shootings %>% 
+  mutate(date = parse_date_time(mass_shootings$date, "mdy"))
+```
+
+use a differage page display that will show a map fullscreen with no margins
+```{r}
+ui <- bootstrapPage(
+  theme = shinythemes::shinytheme('simplex'),
+  leaflet::leafletOutput('map', width = '100%', height = '100%'),
+  absolutePanel(top = 10, right = 10, id = 'controls',
+    sliderInput('nb_fatalities', 'Minimum Fatalities', 1, 40, 10),
+    dateRangeInput(
+      'date_range', 'Select Date', "2010-01-01", "2019-12-01"
+    ),
+    actionButton( 'show_about', 'About' )
+  ),
+  #I could not find my error here! the style has to be typed perfect
+  tags$style(type = "text/css", "
+  html, body {width:100%;height:100%}
+  #controls{background-color:white;padding:20px;}  
+  "))
+
+server <- function( input, output, session ){
+  observeEvent( input$show_about,
+  {showModal(modalDialog(text_about, title = 'About'))})
+  
+  output$map <- leaflet::renderLeaflet( {
+    mass_shootings %>% 
+      filter(
+        date >= input$date_range[1],
+        date <= input$date_range[2],
+        fatalities >= input$nb_fatalities
+      ) %>% 
+      leaflet() %>%
+      setView( -98.58, 39.82, zoom = 5 ) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        popup = ~ summary,
+        radius = ~ sqrt(fatalities)*3,
+        fillColor = 'red', color = 'red', weight = 1
+      )
+  })
+}
+shinyApp(ui, server)
+```
+
+Correct Code:
+```{r}
+ui <- bootstrapPage(
+  theme = shinythemes::shinytheme('simplex'),
+  leaflet::leafletOutput('map', width = '100%', height = '100%'),
+  absolutePanel(top = 10, right = 10, id = 'controls',
+    sliderInput('nb_fatalities', 'Minimum Fatalities', 1, 40, 10),
+    dateRangeInput(
+      'date_range', 'Select Date', "2010-01-01", "2019-12-01"
+    ),
+    actionButton( 'show_about', 'About' )
+  ),
+  tags$style(type = "text/css", "
+    html, body {width:100%;height:100%}     
+    #controls{background-color:white;padding:20px;}
+  ")
+)
+server <- function(input, output, session) {
+  observeEvent( input$show_about,
+  {showModal(modalDialog(text_about, title = 'About'))})
+ 
+  output$map <- leaflet::renderLeaflet({
+    mass_shootings %>% 
+      filter(
+        date >= input$date_range[1],
+        date <= input$date_range[2],
+        fatalities >= input$nb_fatalities
+      ) %>% 
+      leaflet() %>% 
+      setView( -98.58, 39.82, zoom = 5) %>% 
+      addTiles() %>% 
+      addCircleMarkers(
+        popup = ~ summary, radius = ~ sqrt(fatalities)*3,
+        fillColor = 'red', color = 'red', weight = 1
+      )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+
+
+
 
 
 
