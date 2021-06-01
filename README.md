@@ -6,6 +6,8 @@ This repository hold notes & notebooks from various text & courses I take outsid
 
 **Currently Holds**
 
+* Natural Language Processing with Python (Bird, Klein & Loper)
+* Hands-on Machine Learining with Scikit-Learn, Keras & TensorFlow (Geron)
 * DataCamp Notes:
   - Statistics with R track
     - Bayesian Modeling with RJAGS
