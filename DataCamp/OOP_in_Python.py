@@ -399,3 +399,184 @@ class Employee:
 # This should be the case both syntactically & semantically:
       # Syntactically - function signitures are comparable (arguments/return values)
       # Semantically - the state of the object and the program remain consistnet
+      
+# classic problem: circle-elipse
+      # https://en.wikipedia.org/wiki/Circle%E2%80%93ellipse_problem
+      # https://web.archive.org/web/20150905081111/http://www.objectmentor.com/resources/articles/lsp.pdf
+      # https://realpython.com/inheritance-composition-python/
+      
+class Rectangle:
+    def __init__(self, w,h):
+      self.w, self.h = w,h
+      
+# Define set_h to set h       
+    def set_h(self, h):
+      self.h = h
+
+# Define set_w to set w
+    def set_w(self, w):
+      self.w = w   
+      
+class Square(Rectangle):
+    def __init__(self, w):
+      self.w, self.h = w, w 
+      
+# Define set_h to set w and h 
+    def set_h(self, h):
+      self.h = h
+      self.w = h
+      
+# Define set_w to set w and h 
+    def set_w(self, w):
+      self.w = w   
+      self.h = w 
+      
+# Each of the setter methods of Square change both h and w attributes, 
+# while setter methods of Rectangle change only one attribute at a time, 
+# so the Square objects cannot be substituted for Rectangle into programs 
+# that rely on one attribute staying constant.
+# Remember that the substitution principle requires the substitution to 
+# preserve the oversall state of the program. An example of a program that 
+# would fail when this substitution is made is a unit test for a setter 
+# functions in Rectangle class.
+      
+# %% Managing Data Access
+# private attributes
+      
+# Naming conventions: internal attributes
+      # obj._att_name
+      # obj._method_name()
+# a leading '_' underscore is conventions to signal that the attribute or
+# method is 'internal' and should not be touched. Not part of the public API
+      # obj.__attr_name
+      # obj.__method_name()
+# Name manging: a leading '__' double underscore signifies pseudoprivate not inherited.
+# the main use of name mangling is to prevent name clashes in inherited classes
+# this way, important attributes/methods can be protected from being overwritten
+      
+      
+# The single leading underscore is a convention for internal details of 
+# implementation. 
+# Double leading underscores are used for attributes that should not be 
+# inherited to aviod name clashes in child classes. 
+# Finally, leading and trailing double underscores are reserved for built-in 
+# methods.
+
+# Add class attributes for max number of days and months
+class BetterDate:
+    _MAX_DAYS = 30
+    _MAX_MONTHS = 12
+    
+    def __init__(self, year, month, day):
+        self.year, self.month, self.day = year, month, day
+        
+    @classmethod
+    def from_str(cls, datestr):
+        year, month, day = map(int, datestr.split("-"))
+        return cls(year, month, day)
+    
+    # Add _is_valid() checking day and month values
+    def _is_valid(self):
+        month_bool = self.month <= BetterDate._MAX_MONTHS
+        day_bool = self.day <= BetterDate._MAX_DAYS
+        return month_bool == True and day_bool == True
+
+    
+bd1 = BetterDate(2020, 4, 30)
+print(bd1._is_valid())
+
+bd2 = BetterDate(2020, 6, 45)
+print(bd2._is_valid())
+
+# %% Controlling attribute access
+# e.g.: checkig value for validity or making attr read-only
+
+# use the @property attribute
+    # user-facing - behaves just like attributes
+    # developer-facing - gives control of access
+
+class Employer:
+    def __init__( self, name, new_salary ):
+        self._salary = new_salary
+        
+    @property
+    def salary( self ):
+        return self._salary
+    
+    @salary.setter
+    def salary( self, new_salary ):
+        if new_salary < 0:
+            raise ValueError( 'Invalid salary' )
+        self._salary = new_salary
+    
+class Customer:
+    def __init__(self, name, new_bal):
+        self.name = name
+        #if new_bal < 0:
+        #   raise ValueError("Invalid balance!")
+        #self._balance = new_bal  
+
+    # Add a decorated balance() method returning _balance        
+    @property
+    def balance(self):
+        return self._balance
+
+    # Add a setter balance() method
+    @balance.setter
+    def balance(self, new_bal):
+        # Validate the parameter value
+        if new_bal < 0:
+           raise ValueError("Invalid balance!")
+        self._balance = new_bal
+        print("Setter method called")
+
+# Create a Customer        
+cust = Customer( 'Belinda Lutz', 2000 )
+
+# Assign 3000 to the balance property
+cust.balance = 3000
+
+# Print the balance property
+print( cust.balance )
+
+# %%
+
+import pandas as pd
+from datetime import datetime
+
+# MODIFY the class to use _created_at instead of created_at
+class LoggedDF(pd.DataFrame):
+    def __init__(self, *args, **kwargs):
+        pd.DataFrame.__init__(self, *args, **kwargs)
+        self._created_at = datetime.today()
+    
+    def to_csv(self, *args, **kwargs):
+        temp = self.copy()
+        temp["created_at"] = self._created_at
+        pd.DataFrame.to_csv(temp, *args, **kwargs)   
+    
+    # Add a read-only property: _created_at
+    @property  
+    def created_at( self ):
+        return self._created_at
+
+# Instantiate a LoggedDF called ldf
+ldf = LoggedDF({"col1": [1,2], "col2":[3,4]}) 
+
+# ldf.created_at = '2035-07-13'  AttributeError: can't set attribute
+
+# %% Going further with python classes
+
+# 1) multiple inheritance and mixe-in classes
+# 2) Overriding build-in operators like +
+# 3) __getattr__() and __setattr__()
+# 4) Custom iterators
+# 5) Abstract base classes
+# 6) Dataclasses (new in Python 3.7)
+
+# SOLID design principles:
+# S) single-responsibility
+# O) open-closed
+# L) liskov substitution
+# I) interface segregation
+# D) dependency inversion
