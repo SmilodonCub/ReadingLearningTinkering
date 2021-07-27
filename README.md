@@ -25,4 +25,7 @@ This repository hold notes & notebooks from various text & courses I take outsid
     - Multiple and Logistic Regression with R
   - R Shiny
     - Building Web Apps with Shiny in R
+  - Object Oriented Programming in Python (not very descriptive tho, just a script with light comments)
+  - Natural Language Processing in Python
+    - Introduction to Natural Language Processing in Python
 * Introduction to Data Science (Igual & Segui)
