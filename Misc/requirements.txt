@@ -1,0 +1,5 @@
+matplotlib==3.5.2
+missingno==0.5.1
+numpy==1.22.3
+pandas==1.4.2
+session_info==1.0.0
